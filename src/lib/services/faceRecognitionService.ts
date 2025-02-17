@@ -7,7 +7,7 @@ interface VerifyFaceResponse {
 class FaceRecognitionService {
 	async verifyFace(imageData: string): Promise<VerifyFaceResponse> {
 		const response = await fetch(
-			`/api/verify-face`,
+			`${import.meta.env.VITE_SERVER_URL}/api/verify-face`,
 			{
 				method: "POST",
 				headers: {
