@@ -137,12 +137,13 @@ export const useHealthCheck = (): HealthCheckState & {
         refs.hasTimedOut = false;
 
         if (!refs.socket || refs.socket.disconnected) {
-            refs.socket = io(import.meta.env.VITE_SERVER_URL, {
-                transports: ["websocket"],
-                reconnection: true,
-                reconnectionAttempts: 10,
-                reconnectionDelay: 2000,
-            });
+			refs.socket = io(import.meta.env.VITE_SERVER_URL, {
+				transports: ["websocket"],
+				reconnection: true,
+				reconnectionAttempts: 10,
+				reconnectionDelay: 2000,
+			});
+			
 
             refs.socket.on("connect", () => {
                 console.log("✅ WebSocket connected successfully.");
