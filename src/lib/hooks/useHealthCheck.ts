@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
@@ -126,6 +125,7 @@ export const useHealthCheck = (): HealthCheckState & {
 				alcoholStatus = "Пьяный";
 			} else {
 				console.log("🔄 Waiting for `sober === 0` or `drunk === 0`...");
+				return;
 			}
 
 			updateState({
@@ -140,8 +140,14 @@ export const useHealthCheck = (): HealthCheckState & {
 						: state.alcoholData,
 			});
 
+			// ✅ Log final state when update happens
 			console.log("🌡️ Updated temperature data:", temperatureValue);
 			console.log("🚀 Updated alcohol data:", alcoholStatus);
+			console.log("✅ Final State Debug:", {
+				alcoholData: alcoholStatus,
+				temperatureData: temperatureValue,
+				fullData: data,
+			});
 		},
 		[
 			state.currentState,
@@ -261,6 +267,7 @@ export const useHealthCheck = (): HealthCheckState & {
 		}
 	}, [state, navigate, refs, updateState]);
 
+
 	return {
 		...state,
 		secondsLeft,
@@ -273,4 +280,5 @@ export const useHealthCheck = (): HealthCheckState & {
 						: newState,
 			}),
 	};
+
 };
