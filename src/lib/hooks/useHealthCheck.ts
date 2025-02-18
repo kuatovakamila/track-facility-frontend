@@ -111,22 +111,25 @@ export const useHealthCheck = (): HealthCheckState & {
 			clearTimeout(refs.timeout!);
 			refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-			// Wait until `sober === 0` or `drunk === 0` before setting state
-			let alcoholStatus = "Не определено";
+			// ✅ Ensure temperature data updates correctly
+			const temperatureValue =
+				data.temperature !== undefined ? Number(data.temperature) : state.temperatureData.temperature;
+
+			// ✅ Ensure alcohol status is only updated when sober or drunk is 0
+			let alcoholStatus = state.alcoholData.alcoholLevel; // Keep existing value
 			if (data.sober === 0) {
 				alcoholStatus = "Трезвый";
 			} else if (data.drunk === 0) {
 				alcoholStatus = "Пьяный";
 			} else {
 				console.log("🔄 Waiting for a valid alcohol status...");
-				return; // Keep waiting until a valid status is received
 			}
 
 			updateState({
 				stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
 				temperatureData:
 					state.currentState === "TEMPERATURE"
-						? { temperature: Number(data.temperature!) }
+						? { temperature: temperatureValue }
 						: state.temperatureData,
 				alcoholData:
 					state.currentState === "ALCOHOL"
@@ -134,6 +137,7 @@ export const useHealthCheck = (): HealthCheckState & {
 						: state.alcoholData,
 			});
 
+			console.log("🌡️ Updated temperature data:", temperatureValue);
 			console.log("🚀 Updated alcohol data:", alcoholStatus);
 		},
 		[
