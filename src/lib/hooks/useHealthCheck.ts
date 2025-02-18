@@ -145,41 +145,38 @@ export const useHealthCheck = (): HealthCheckState & {
 		[state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
 	);
 	
-	useEffect(() => {
-		refs.hasTimedOut = false;
 	
-		if (!refs.socket || refs.socket?.disconnected) {
-			console.log("🔄 Reconnecting WebSocket...");
-	
-			refs.socket = io(import.meta.env.VITE_SERVER_URL, {
-				transports: ["websocket"],
-				reconnection: true,
-				reconnectionAttempts: 10, // ✅ Increase retries
-				reconnectionDelay: 2000, // ✅ Increase delay
-			});
-	
-			refs.socket.on("connect", () => {
-				console.log("✅ WebSocket connected successfully.");
-			});
-	
-			refs.socket.on("disconnect", (reason) => {
-				console.warn("⚠️ WebSocket disconnected:", reason);
-			});
-	
-			refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-		}
-	
-		configureSocketListeners(refs.socket, state.currentState, {
-			onData: handleDataEvent,
-			onError: handleTimeout,
-		});
-	
-		return () => {
-			console.log("🔌 Cleanup: WebSocket still connected?", refs.socket?.connected ?? "N/A");
-			clearTimeout(refs.timeout!);
-		};
-	}, [state.currentState, handleTimeout, handleDataEvent]);
-	
+
+    useEffect(() => {
+        refs.hasTimedOut = false;
+        const socket = io(import.meta.env.VITE_SERVER_URL, {
+            transports: ["websocket"],
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+        });
+
+        refs.socket = socket;
+        refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+        configureSocketListeners(socket, state.currentState, {
+            onData: handleDataEvent,
+            onError: handleTimeout,
+        });
+
+        const stabilityInterval = setInterval(() => {
+            if (Date.now() - refs.lastDataTime > STABILITY_UPDATE_INTERVAL) {
+                updateState({
+                    stabilityTime: Math.max(state.stabilityTime - 1, 0),
+                });
+            }
+        }, STABILITY_UPDATE_INTERVAL);
+
+        return () => {
+            socket.disconnect();
+            clearTimeout(refs.timeout!);
+            clearInterval(stabilityInterval);
+        };
+    }, [state.currentState, handleTimeout, handleDataEvent]);
 
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
