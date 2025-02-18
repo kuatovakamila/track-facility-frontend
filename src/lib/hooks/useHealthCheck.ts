@@ -92,7 +92,7 @@ export const useHealthCheck = (): HealthCheckState & {
         navigate("/");
     }, [navigate]);
 
-    const handleDataEvent = useCallback(
+	const handleDataEvent = useCallback(
 		(data: SensorData) => {
 			if (!data) return;
 			refs.lastDataTime = Date.now();
@@ -101,16 +101,28 @@ export const useHealthCheck = (): HealthCheckState & {
 	
 			let alcoholStatus = "Не определено"; // Default state
 	
+			// 🛠 Debug: Log received alcohol data
+			console.log("📡 Raw alcohol data received:", data.alcoholLevel);
+	
 			if (data.alcoholLevel) {
 				try {
-					const alcoholData = JSON.parse(data.alcoholLevel);
-					if (alcoholData.sober === 1) {
-						alcoholStatus = "Трезвый";
-					} else if (alcoholData.drunk === 1) {
-						alcoholStatus = "Пьяный";
+					const alcoholData = typeof data.alcoholLevel === "string" 
+						? JSON.parse(data.alcoholLevel) 
+						: data.alcoholLevel;
+	
+					console.log("✅ Parsed alcohol data:", alcoholData); // Log after parsing
+	
+					if (alcoholData && typeof alcoholData === "object") {
+						if (alcoholData.sober === 0) {
+							alcoholStatus = "Трезвый";
+						} else if (alcoholData.drunk === 0) {
+							alcoholStatus = "Пьяный";
+						}
+					} else {
+						console.warn("⚠️ alcoholData is not an object:", alcoholData);
 					}
 				} catch (error) {
-					console.error("Ошибка парсинга данных алкоголя:", error);
+					console.error("❌ Ошибка парсинга данных алкоголя:", error, data.alcoholLevel);
 				}
 			}
 	
@@ -128,6 +140,7 @@ export const useHealthCheck = (): HealthCheckState & {
 		},
 		[state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
 	);
+	
 	
 
     useEffect(() => {
