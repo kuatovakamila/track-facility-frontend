@@ -148,18 +148,28 @@ export const useHealthCheck = (): HealthCheckState & {
 	useEffect(() => {
 		refs.hasTimedOut = false;
 	
-		if (!refs.socket || refs.socket?.disconnected) {
-			console.log("🔄 Reconnecting WebSocket...");
+		if (!refs.socket || refs.socket?.disconnected || !refs.socket?.connected) {
+			console.log("🔄 Attempting to reconnect WebSocket...");
+	
+			// Prevent redundant reconnections
+			if (refs.socket?.connect) {
+				console.log("⚠️ WebSocket is already connecting, skipping reconnection.");
+				return;
+			}
 	
 			refs.socket = io(import.meta.env.VITE_SERVER_URL, {
 				transports: ["websocket"],
 				reconnection: true,
-				reconnectionAttempts: 10, // ✅ Increase retries
-				reconnectionDelay: 2000, // ✅ Increase delay
+				reconnectionAttempts: 10, // ✅ More retries
+				reconnectionDelay: 2000, // ✅ Prevent fast reconnections
 			});
 	
 			refs.socket.on("connect", () => {
 				console.log("✅ WebSocket connected successfully.");
+			});
+	
+			refs.socket.on("connect_error", (error) => {
+				console.error("❌ WebSocket connection error:", error);
 			});
 	
 			refs.socket.on("disconnect", (reason) => {
@@ -175,7 +185,14 @@ export const useHealthCheck = (): HealthCheckState & {
 		});
 	
 		return () => {
-			console.log("🔌 Cleanup: WebSocket still connected?", refs.socket?.connected ?? "N/A");
+			console.log("🔌 Cleanup: WebSocket status before unmount:", refs.socket?.connected ?? "N/A");
+			
+			if (refs.socket) {
+				refs.socket.off("connect");
+				refs.socket.off("disconnect");
+				refs.socket.off("connect_error");
+			}
+	
 			clearTimeout(refs.timeout!);
 		};
 	}, [state.currentState, handleTimeout, handleDataEvent]);
