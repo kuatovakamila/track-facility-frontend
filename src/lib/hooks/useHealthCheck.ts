@@ -150,10 +150,14 @@ export const useHealthCheck = (): HealthCheckState & {
             });
 
 
-            refs.socket.on("authentication_complete", () => {
-                console.log("✅ Received authentication_complete event, navigating...");
-                navigate("/complete-authentication", { state: { success: true } });
-            });
+			refs.socket.on("alcohol", (data) => {
+				console.log("📡 Alcohol Data Received:", data);
+	
+				if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
+					console.log("✅ User is sober or drunk, navigating to authentication completion...");
+					navigate("/complete-authentication", { state: { success: true } });
+				}
+			});
 
             refs.socket.on("disconnect", (reason) => {
                 console.warn("⚠️ WebSocket disconnected:", reason);
