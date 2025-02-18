@@ -13,25 +13,20 @@ const TIMEOUT_MESSAGE =
 
 // Type definitions
 type SensorData = {
-	// bpm?: string;
 	temperature?: string;
-	alcoholLevel?: string;
+	sober?: number;
+	drunk?: number;
 };
 
 type HealthCheckState = {
 	currentState: StateKey;
 	stabilityTime: number;
-	// bpmData: { bpm: number };
 	temperatureData: { temperature: number };
 	alcoholData: { alcoholLevel: string };
 	secondsLeft: number;
 };
 
-const STATE_SEQUENCE: StateKey[] = [
-	// "PULSE",
-	"TEMPERATURE",
-	"ALCOHOL",
-];
+const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
 
 const configureSocketListeners = (
 	socket: Socket,
@@ -41,21 +36,22 @@ const configureSocketListeners = (
 		onError: () => void;
 	},
 ) => {
-	// Remove any existing listeners
 	socket.removeAllListeners();
 	socket.on("connect_error", handlers.onError);
 	socket.on("error", handlers.onError);
 
-	// Add only the listener for current state
 	switch (currentState) {
-		// case "PULSE":
-		// 	socket.on("heartbeat", handlers.onData);
-		// 	break;
 		case "TEMPERATURE":
-			socket.on("temperature", handlers.onData);
+			socket.on("temperature", (data) => {
+				console.log("📡 Received TEMPERATURE data:", data);
+				handlers.onData(data);
+			});
 			break;
 		case "ALCOHOL":
-			socket.on("alcohol", handlers.onData);
+			socket.on("alcohol", (data) => {
+				console.log("📡 Received ALCOHOL data:", data);
+				handlers.onData(data);
+			});
 			break;
 	}
 };
@@ -68,9 +64,8 @@ export const useHealthCheck = (): HealthCheckState & {
 	const [state, setState] = useState<Omit<HealthCheckState, "secondsLeft">>({
 		currentState: "TEMPERATURE",
 		stabilityTime: 0,
-		// bpmData: { bpm: 0 },
 		temperatureData: { temperature: 0 },
-		alcoholData: { alcoholLevel: "undefined" },
+		alcoholData: { alcoholLevel: "Не определено" },
 	});
 	const [secondsLeft, setSecondsLeft] = useState(15);
 
@@ -108,34 +103,35 @@ export const useHealthCheck = (): HealthCheckState & {
 
 	const handleDataEvent = useCallback(
 		(data: SensorData) => {
+			console.log("🔥 Received Sensor Data:", data);
 			if (!data) return;
+
 			refs.lastDataTime = Date.now();
 			clearTimeout(refs.timeout!);
 			refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
+			// Determine alcohol status based on `sober` and `drunk`
+			let alcoholStatus = "Не определено";
+			if (data.sober === 0) alcoholStatus = "Трезвый";
+			if (data.drunk === 0) alcoholStatus = "Пьяный";
+
 			updateState({
-				stabilityTime: Math.min(
-					state.stabilityTime + 1,
-					MAX_STABILITY_TIME,
-				),
-				// bpmData:
-				// 	state.currentState === "PULSE"
-				// 		? { bpm: Number(data.bpm!) }
-				// 		: state.bpmData,
+				stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
 				temperatureData:
 					state.currentState === "TEMPERATURE"
 						? { temperature: Number(data.temperature!) }
 						: state.temperatureData,
 				alcoholData:
 					state.currentState === "ALCOHOL"
-						? { alcoholLevel: data.alcoholLevel! }
+						? { alcoholLevel: alcoholStatus }
 						: state.alcoholData,
 			});
+
+			console.log("🚀 Updated alcohol data:", alcoholStatus);
 		},
 		[
 			state.currentState,
 			state.stabilityTime,
-			// state.bpmData,
 			state.temperatureData,
 			state.alcoholData,
 			updateState,
@@ -155,6 +151,8 @@ export const useHealthCheck = (): HealthCheckState & {
 	);
 
 	useEffect(() => {
+		console.log("🔗 Connecting to WebSocket:", import.meta.env.VITE_SERVER_URL);
+
 		// Reset timeout flag when state changes
 		refs.hasTimedOut = false;
 
@@ -168,7 +166,14 @@ export const useHealthCheck = (): HealthCheckState & {
 		refs.socket = socket;
 		refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-		// Setup socket listeners for current state only
+		socket.on("connect", () => {
+			console.log("✅ WebSocket connected!");
+		});
+
+		socket.on("disconnect", () => {
+			console.log("❌ WebSocket disconnected!");
+		});
+
 		setupSocketForState(socket, state.currentState);
 
 		const stabilityInterval = setInterval(() => {
@@ -228,8 +233,6 @@ export const useHealthCheck = (): HealthCheckState & {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
-						bpmData: 0,
-						// state.bpmData,
 						temperatureData: state.temperatureData,
 						alcoholData: state.alcoholData,
 						faceId,
@@ -242,8 +245,6 @@ export const useHealthCheck = (): HealthCheckState & {
 			localStorage.setItem(
 				"results",
 				JSON.stringify({
-					bpm: 0,
-					// state.bpmData.bpm,
 					temperature: state.temperatureData.temperature,
 					alcohol: state.alcoholData.alcoholLevel,
 				}),
@@ -267,5 +268,7 @@ export const useHealthCheck = (): HealthCheckState & {
 						? newState(state.currentState)
 						: newState,
 			}),
+		
+		
 	};
 };
