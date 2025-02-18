@@ -93,26 +93,42 @@ export const useHealthCheck = (): HealthCheckState & {
     }, [navigate]);
 
     const handleDataEvent = useCallback(
-        (data: SensorData) => {
-            if (!data) return;
-            refs.lastDataTime = Date.now();
-            clearTimeout(refs.timeout!);
-            refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-
-            updateState({
-                stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
-                temperatureData:
-                    state.currentState === "TEMPERATURE"
-                        ? { temperature: Number(data.temperature) || 0 }
-                        : state.temperatureData,
-                alcoholData:
-                    state.currentState === "ALCOHOL"
-                        ? { alcoholLevel: data.alcoholLevel || "Не определено" }
-                        : state.alcoholData,
-            });
-        },
-        [state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
-    );
+		(data: SensorData) => {
+			if (!data) return;
+			refs.lastDataTime = Date.now();
+			clearTimeout(refs.timeout!);
+			refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+	
+			let alcoholStatus = "Не определено"; // Default state
+	
+			if (data.alcoholLevel) {
+				try {
+					const alcoholData = JSON.parse(data.alcoholLevel);
+					if (alcoholData.sober === 1) {
+						alcoholStatus = "Трезвый";
+					} else if (alcoholData.drunk === 1) {
+						alcoholStatus = "Пьяный";
+					}
+				} catch (error) {
+					console.error("Ошибка парсинга данных алкоголя:", error);
+				}
+			}
+	
+			updateState({
+				stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
+				temperatureData:
+					state.currentState === "TEMPERATURE"
+						? { temperature: Number(data.temperature) || 0 }
+						: state.temperatureData,
+				alcoholData:
+					state.currentState === "ALCOHOL"
+						? { alcoholLevel: alcoholStatus }
+						: state.alcoholData,
+			});
+		},
+		[state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
+	);
+	
 
     useEffect(() => {
         refs.hasTimedOut = false;
