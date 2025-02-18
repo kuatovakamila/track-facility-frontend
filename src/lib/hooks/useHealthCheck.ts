@@ -111,25 +111,23 @@ export const useHealthCheck = (): HealthCheckState & {
 				try {
 					console.log("📡 Raw alcohol data received:", data.alcoholLevel);
 	
-					const alcoholData = typeof data.alcoholLevel === "string"
-						? JSON.parse(data.alcoholLevel)
-						: data.alcoholLevel;
-	
-					console.log("✅ Parsed alcohol data:", alcoholData);
-	
-					if (alcoholData && typeof alcoholData === "object") {
-						if (alcoholData.sober === 0) {
-							alcoholStatus = "Трезвый";
-							console.log("✅ User is Трезвый (Sober)!");
-						} else if (alcoholData.drunk === 0) {
-							alcoholStatus = "Пьяный";
-							console.log("🚨 User is Пьяный (Drunk)!");
-						}
-					} else {
-						console.warn("⚠️ alcoholData is not an object:", alcoholData);
+					if (data.alcoholLevel === "unknown" || data.alcoholLevel === "error") {
+						console.warn("⚠️ No valid alcohol data received, skipping update.");
+						return; // 🚫 Skip updating state with "unknown"
 					}
+	
+					const alcoholData = data.alcoholLevel;
+	
+					if (alcoholData === "normal") {
+						alcoholStatus = "Трезвый";
+						console.log("✅ User is Трезвый (Sober)!");
+					} else if (alcoholData === "abnormal") {
+						alcoholStatus = "Пьяный";
+						console.log("🚨 User is Пьяный (Drunk)!");
+					}
+	
 				} catch (error) {
-					console.error("❌ Ошибка парсинга данных алкоголя:", error, data.alcoholLevel);
+					console.error("❌ Ошибка обработки данных алкоголя:", error, data.alcoholLevel);
 				}
 			} else {
 				console.warn("⚠️ No alcohol data received from backend!");
