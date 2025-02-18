@@ -111,11 +111,7 @@ export const useHealthCheck = (): HealthCheckState & {
 				try {
 					console.log("📡 Raw alcohol data received:", data.alcoholLevel);
 	
-					if (data.alcoholLevel === "unknown" || data.alcoholLevel === "error") {
-						console.warn("⚠️ No valid alcohol data received, skipping update.");
-						return; // 🚫 Skip updating state with "unknown"
-					}
-	
+					// ✅ No need to parse since it's already a string!
 					const alcoholData = data.alcoholLevel;
 	
 					if (alcoholData === "normal") {
@@ -147,7 +143,6 @@ export const useHealthCheck = (): HealthCheckState & {
 		},
 		[state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
 	);
-	
 	
 	
 
