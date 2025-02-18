@@ -148,20 +148,25 @@ export const useHealthCheck = (): HealthCheckState & {
 	useEffect(() => {
 		refs.hasTimedOut = false;
 	
-		if (!refs.socket || refs.socket?.disconnected || !refs.socket?.connected) {
+		// ✅ Ensure WebSocket URL is defined
+		const SERVER_URL = import.meta.env.VITE_SERVER_URL || "wss://your-production-server.com";
+	
+		// ✅ Check if socket is already connected before reconnecting
+		if (!refs.socket || refs.socket.disconnected || !refs.socket.connected) {
 			console.log("🔄 Attempting to reconnect WebSocket...");
 	
-			// Prevent redundant reconnections
+			// ✅ Prevent multiple reconnections
 			if (refs.socket?.connect) {
 				console.log("⚠️ WebSocket is already connecting, skipping reconnection.");
 				return;
 			}
 	
-			refs.socket = io(import.meta.env.VITE_SERVER_URL, {
+			// ✅ Create new WebSocket connection
+			refs.socket = io(SERVER_URL, {
 				transports: ["websocket"],
 				reconnection: true,
 				reconnectionAttempts: 10, // ✅ More retries
-				reconnectionDelay: 2000, // ✅ Prevent fast reconnections
+				reconnectionDelay: 2000, // ✅ Prevent rapid reconnects
 			});
 	
 			refs.socket.on("connect", () => {
@@ -186,7 +191,7 @@ export const useHealthCheck = (): HealthCheckState & {
 	
 		return () => {
 			console.log("🔌 Cleanup: WebSocket status before unmount:", refs.socket?.connected ?? "N/A");
-			
+	
 			if (refs.socket) {
 				refs.socket.off("connect");
 				refs.socket.off("disconnect");
