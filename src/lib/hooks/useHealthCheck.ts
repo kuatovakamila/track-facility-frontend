@@ -94,29 +94,36 @@ export const useHealthCheck = (): HealthCheckState & {
 
 	const handleDataEvent = useCallback(
 		(data: SensorData) => {
-			if (!data) return;
+			if (!data) {
+				console.warn("⚠️ Received empty data packet");
+				return;
+			}
+	
+			console.log("📡 Full sensor data received:", data);
+	
 			refs.lastDataTime = Date.now();
 			clearTimeout(refs.timeout!);
 			refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 	
 			let alcoholStatus = "Не определено"; // Default state
 	
-			// 🛠 Debug: Log received alcohol data
-			console.log("📡 Raw alcohol data received:", data.alcoholLevel);
-	
 			if (data.alcoholLevel) {
 				try {
-					const alcoholData = typeof data.alcoholLevel === "string" 
-						? JSON.parse(data.alcoholLevel) 
+					console.log("📡 Raw alcohol data received:", data.alcoholLevel);
+	
+					const alcoholData = typeof data.alcoholLevel === "string"
+						? JSON.parse(data.alcoholLevel)
 						: data.alcoholLevel;
 	
-					console.log("✅ Parsed alcohol data:", alcoholData); // Log after parsing
+					console.log("✅ Parsed alcohol data:", alcoholData);
 	
 					if (alcoholData && typeof alcoholData === "object") {
 						if (alcoholData.sober === 0) {
 							alcoholStatus = "Трезвый";
+							console.log("✅ User is Трезвый (Sober)!");
 						} else if (alcoholData.drunk === 0) {
 							alcoholStatus = "Пьяный";
+							console.log("🚨 User is Пьяный (Drunk)!");
 						}
 					} else {
 						console.warn("⚠️ alcoholData is not an object:", alcoholData);
@@ -124,6 +131,8 @@ export const useHealthCheck = (): HealthCheckState & {
 				} catch (error) {
 					console.error("❌ Ошибка парсинга данных алкоголя:", error, data.alcoholLevel);
 				}
+			} else {
+				console.warn("⚠️ No alcohol data received from backend!");
 			}
 	
 			updateState({
@@ -140,6 +149,7 @@ export const useHealthCheck = (): HealthCheckState & {
 		},
 		[state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
 	);
+	
 	
 	
 
