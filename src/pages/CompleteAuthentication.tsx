@@ -3,7 +3,6 @@ import { motion } from "framer-motion";
 import {
 	CheckCircle,
 	XCircle,
-	Heart,
 	Thermometer,
 	Wine,
 } from "@phosphor-icons/react";
