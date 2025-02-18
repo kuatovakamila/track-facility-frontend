@@ -273,4 +273,4 @@ export const useHealthCheck = (): HealthCheckState & {
 						? newState(state.currentState)
 						: newState,
 			}),
-	};
+}};
