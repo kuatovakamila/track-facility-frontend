@@ -29,20 +29,17 @@ type HealthCheckState = {
 
 const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
 
-// ✅ Ensure WebSocket listeners are properly configured
 const configureSocketListeners = (
 	socket: Socket,
 	currentState: StateKey,
 	handlers: {
 		onData: (data: SensorData) => void;
 		onError: () => void;
-	}
+	},
 ) => {
 	socket.removeAllListeners();
 	socket.on("connect_error", handlers.onError);
 	socket.on("error", handlers.onError);
-
-	console.log(`🛜 Setting up WebSocket listener for state: ${currentState}`);
 
 	switch (currentState) {
 		case "TEMPERATURE":
@@ -57,8 +54,6 @@ const configureSocketListeners = (
 				handlers.onData(data);
 			});
 			break;
-		default:
-			console.warn("⚠️ Unknown state:", currentState);
 	}
 };
 
@@ -85,11 +80,11 @@ export const useHealthCheck = (): HealthCheckState & {
 
 	const updateState = useCallback(
 		<K extends keyof HealthCheckState>(
-			updates: Pick<HealthCheckState, K>
+			updates: Pick<HealthCheckState, K>,
 		) => {
 			setState((prev) => ({ ...prev, ...updates }));
 		},
-		[]
+		[],
 	);
 
 	const handleTimeout = useCallback(() => {
@@ -116,11 +111,12 @@ export const useHealthCheck = (): HealthCheckState & {
 			clearTimeout(refs.timeout!);
 			refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-			// ✅ Debugging logs
-			console.log("🔍 Checking alcohol values: sober =", data.sober, "drunk =", data.drunk);
+			// ✅ Ensure temperature data updates correctly
+			const temperatureValue =
+				data.temperature !== undefined ? Number(data.temperature) : state.temperatureData.temperature;
 
 			// ✅ Ensure alcohol status is only updated when sober or drunk is 0
-			let alcoholStatus = state.alcoholData.alcoholLevel; // Preserve previous state
+			let alcoholStatus = state.alcoholData.alcoholLevel; // Keep existing value
 			if (data.sober === 0) {
 				alcoholStatus = "Трезвый";
 			} else if (data.drunk === 0) {
@@ -133,7 +129,7 @@ export const useHealthCheck = (): HealthCheckState & {
 				stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
 				temperatureData:
 					state.currentState === "TEMPERATURE"
-						? { temperature: Number(data.temperature!) }
+						? { temperature: temperatureValue }
 						: state.temperatureData,
 				alcoholData:
 					state.currentState === "ALCOHOL"
@@ -141,6 +137,7 @@ export const useHealthCheck = (): HealthCheckState & {
 						: state.alcoholData,
 			});
 
+			console.log("🌡️ Updated temperature data:", temperatureValue);
 			console.log("🚀 Updated alcohol data:", alcoholStatus);
 		},
 		[
@@ -151,7 +148,7 @@ export const useHealthCheck = (): HealthCheckState & {
 			updateState,
 			handleTimeout,
 			refs,
-		]
+		],
 	);
 
 	const setupSocketForState = useCallback(
@@ -161,7 +158,7 @@ export const useHealthCheck = (): HealthCheckState & {
 				onError: handleTimeout,
 			});
 		},
-		[handleDataEvent, handleTimeout]
+		[handleDataEvent, handleTimeout],
 	);
 
 	useEffect(() => {
@@ -223,7 +220,7 @@ export const useHealthCheck = (): HealthCheckState & {
 	const handleComplete = useCallback(async () => {
 		if (refs.isSubmitting) return;
 		refs.isSubmitting = true;
-
+	
 		const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
 		if (currentIndex < STATE_SEQUENCE.length - 1) {
 			updateState({
@@ -233,26 +230,43 @@ export const useHealthCheck = (): HealthCheckState & {
 			refs.isSubmitting = false;
 			return;
 		}
-
+	
 		try {
 			refs.socket?.disconnect();
 			const faceId = localStorage.getItem("faceId");
 			if (!faceId) throw new Error("Face ID not found");
-
+	
+			const response = await fetch(
+				`${import.meta.env.VITE_SERVER_URL}/health`,
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						temperatureData: state.temperatureData,
+						alcoholData: state.alcoholData,
+						faceId,
+					}),
+				}
+			);
+	
+			if (!response.ok) throw new Error("Request failed");
+	
+			// ✅ FIX: Ensure the final alcohol state is correctly stored in localStorage
 			localStorage.setItem(
 				"results",
 				JSON.stringify({
 					temperature: state.temperatureData.temperature,
-					alcohol: state.alcoholData.alcoholLevel,
+					alcohol: state.alcoholData.alcoholLevel, // Ensures correct final alcohol state is saved
 				})
 			);
-
+	
 			navigate("/complete-authentication", { state: { success: true } });
 		} catch (error) {
 			console.error("Submission error:", error);
 			refs.isSubmitting = false;
 		}
 	}, [state, navigate, refs, updateState]);
+	
 
 	return {
 		...state,
@@ -268,6 +282,3 @@ export const useHealthCheck = (): HealthCheckState & {
 		
 	};
 };
-
-	
-
