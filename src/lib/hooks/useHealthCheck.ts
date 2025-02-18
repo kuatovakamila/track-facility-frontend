@@ -16,7 +16,6 @@ type SensorData = {
 	temperature?: string;
 	sober?: number;
 	drunk?: number;
-	ready?: number;
 };
 
 type HealthCheckState = {
@@ -111,25 +110,16 @@ export const useHealthCheck = (): HealthCheckState & {
 			clearTimeout(refs.timeout!);
 			refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-			// ✅ Ensure temperature data updates correctly
-			const temperatureValue =
-				data.temperature !== undefined ? Number(data.temperature) : state.temperatureData.temperature;
-
-			// ✅ Ensure alcohol status is only updated when sober or drunk is 0
-			let alcoholStatus = state.alcoholData.alcoholLevel; // Keep existing value
-			if (data.sober === 0) {
-				alcoholStatus = "Трезвый";
-			} else if (data.drunk === 0) {
-				alcoholStatus = "Пьяный";
-			} else {
-				console.log("🔄 Waiting for a valid alcohol status...");
-			}
+			// Determine alcohol status based on `sober` and `drunk`
+			let alcoholStatus = "Не определено";
+			if (data.sober === 0) alcoholStatus = "Трезвый";
+			if (data.drunk === 0) alcoholStatus = "Пьяный";
 
 			updateState({
 				stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
 				temperatureData:
 					state.currentState === "TEMPERATURE"
-						? { temperature: temperatureValue }
+						? { temperature: Number(data.temperature!) }
 						: state.temperatureData,
 				alcoholData:
 					state.currentState === "ALCOHOL"
@@ -137,7 +127,6 @@ export const useHealthCheck = (): HealthCheckState & {
 						: state.alcoholData,
 			});
 
-			console.log("🌡️ Updated temperature data:", temperatureValue);
 			console.log("🚀 Updated alcohol data:", alcoholStatus);
 		},
 		[
@@ -164,6 +153,7 @@ export const useHealthCheck = (): HealthCheckState & {
 	useEffect(() => {
 		console.log("🔗 Connecting to WebSocket:", import.meta.env.VITE_SERVER_URL);
 
+		// Reset timeout flag when state changes
 		refs.hasTimedOut = false;
 
 		const socket = io(import.meta.env.VITE_SERVER_URL, {
@@ -194,6 +184,7 @@ export const useHealthCheck = (): HealthCheckState & {
 			}
 		}, STABILITY_UPDATE_INTERVAL);
 
+		// Cleanup function
 		return () => {
 			socket.disconnect();
 			clearTimeout(refs.timeout!);
@@ -220,7 +211,7 @@ export const useHealthCheck = (): HealthCheckState & {
 	const handleComplete = useCallback(async () => {
 		if (refs.isSubmitting) return;
 		refs.isSubmitting = true;
-	
+
 		const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
 		if (currentIndex < STATE_SEQUENCE.length - 1) {
 			updateState({
@@ -230,12 +221,12 @@ export const useHealthCheck = (): HealthCheckState & {
 			refs.isSubmitting = false;
 			return;
 		}
-	
+
 		try {
 			refs.socket?.disconnect();
 			const faceId = localStorage.getItem("faceId");
 			if (!faceId) throw new Error("Face ID not found");
-	
+
 			const response = await fetch(
 				`${import.meta.env.VITE_SERVER_URL}/health`,
 				{
@@ -246,27 +237,25 @@ export const useHealthCheck = (): HealthCheckState & {
 						alcoholData: state.alcoholData,
 						faceId,
 					}),
-				}
+				},
 			);
-	
+
 			if (!response.ok) throw new Error("Request failed");
-	
-			// ✅ FIX: Ensure the final alcohol state is correctly stored in localStorage
+
 			localStorage.setItem(
 				"results",
 				JSON.stringify({
 					temperature: state.temperatureData.temperature,
-					alcohol: state.alcoholData.alcoholLevel, // Ensures correct final alcohol state is saved
-				})
+					alcohol: state.alcoholData.alcoholLevel,
+				}),
 			);
-	
+
 			navigate("/complete-authentication", { state: { success: true } });
 		} catch (error) {
 			console.error("Submission error:", error);
 			refs.isSubmitting = false;
 		}
 	}, [state, navigate, refs, updateState]);
-	
 
 	return {
 		...state,
@@ -279,6 +268,5 @@ export const useHealthCheck = (): HealthCheckState & {
 						? newState(state.currentState)
 						: newState,
 			}),
-		
 	};
 };
