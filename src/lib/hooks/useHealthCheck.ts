@@ -111,11 +111,15 @@ export const useHealthCheck = (): HealthCheckState & {
 			clearTimeout(refs.timeout!);
 			refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-			// Wait for `ready === 0` before processing `sober` and `drunk`
+			// Wait until `sober === 0` or `drunk === 0` before setting state
 			let alcoholStatus = "Не определено";
-			if (data.ready === 0) {
-				if (data.sober === 0) alcoholStatus = "Трезвый";
-				else if (data.drunk === 0) alcoholStatus = "Пьяный";
+			if (data.sober === 0) {
+				alcoholStatus = "Трезвый";
+			} else if (data.drunk === 0) {
+				alcoholStatus = "Пьяный";
+			} else {
+				console.log("🔄 Waiting for a valid alcohol status...");
+				return; // Keep waiting until a valid status is received
 			}
 
 			updateState({
