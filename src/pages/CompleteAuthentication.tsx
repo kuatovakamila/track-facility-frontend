@@ -16,7 +16,14 @@ export default function CompleteAuthentication() {
 	const [isSuccess, setIsSuccess] = useState(location.state?.success ?? true);
 
 	// ✅ Retrieve results from localStorage
-	const results = JSON.parse(localStorage.getItem("results") || "{}");
+	const results = (() => {
+        try {
+            return JSON.parse(localStorage.getItem("results") || "{}");
+        } catch (error) {
+            console.error("Error parsing results:", error);
+            return {};
+        }
+    })();
 
 	// ✅ Ensure correct alcohol state is displayed
 	const alcoholStatus =
@@ -28,9 +35,8 @@ export default function CompleteAuthentication() {
 
 	// ✅ Updated stats with the correct alcohol state
 	const stats = [
-		{ icon: Heart, value: results.bpm || "0", unit: "уд/м" },
-		{ icon: Thermometer, value: results.temperature || "0", unit: "°C" },
-		{ icon: Wine, value: alcoholStatus, unit: "" }, // ✅ Displays correct final alcohol state
+		{ icon: Thermometer, value: results.temperature ?? "0", unit: "°C" },
+        { icon: Wine, value: alcoholStatus, unit: "" },
 	];
 
 	useEffect(() => {
