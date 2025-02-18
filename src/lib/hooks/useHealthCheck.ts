@@ -149,14 +149,6 @@ export const useHealthCheck = (): HealthCheckState & {
                 console.log("✅ WebSocket connected successfully.");
             });
 
-            refs.socket.on("alcohol", (data) => {
-                console.log("📡 Alcohol Data Received:", data);
-
-                if (data.alcoholLevel === "normal") {
-                    console.log("✅ User is sober, navigating to authentication completion...");
-                    navigate("/complete-authentication", { state: { success: true } });
-                }
-            });
 
             refs.socket.on("authentication_complete", () => {
                 console.log("✅ Received authentication_complete event, navigating...");
