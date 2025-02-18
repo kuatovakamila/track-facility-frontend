@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
@@ -119,15 +118,15 @@ export const useHealthCheck = (): HealthCheckState & {
 				data.temperature !== undefined ? Number(data.temperature) : state.temperatureData.temperature;
 
 			// ✅ Only update alcohol state when `sober === 0` or `drunk === 0`
-			let alcoholStatus = state.alcoholData.alcoholLevel; // Keep existing value
+			let alcoholStatus = state.alcoholData.alcoholLevel;
 			if (data.sober === 0) {
 				alcoholStatus = "Трезвый";
 			} else if (data.drunk === 0) {
 				alcoholStatus = "Пьяный";
 			} else {
 				console.log("🔄 Waiting for `sober === 0` or `drunk === 0`...");
+				return;
 			}
-			console.log(alcoholStatus)
 
 			updateState({
 				stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
@@ -144,82 +143,8 @@ export const useHealthCheck = (): HealthCheckState & {
 			console.log("🌡️ Updated temperature data:", temperatureValue);
 			console.log("🚀 Updated alcohol data:", alcoholStatus);
 		},
-		[
-			state.currentState,
-			state.stabilityTime,
-			state.temperatureData,
-			state.alcoholData,
-			updateState,
-			handleTimeout,
-			refs,
-		],
+		[state, updateState, handleTimeout, refs],
 	);
-
-	const setupSocketForState = useCallback(
-		(socket: Socket, currentState: StateKey) => {
-			configureSocketListeners(socket, currentState, {
-				onData: handleDataEvent,
-				onError: handleTimeout,
-			});
-		},
-		[handleDataEvent, handleTimeout],
-	);
-
-	useEffect(() => {
-		console.log("🔗 Connecting to WebSocket:", import.meta.env.VITE_SERVER_URL);
-
-		refs.hasTimedOut = false;
-
-		const socket = io(import.meta.env.VITE_SERVER_URL, {
-			transports: ["websocket"],
-			reconnection: true,
-			reconnectionAttempts: 5,
-			reconnectionDelay: 1000,
-		});
-
-		refs.socket = socket;
-		refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-
-		socket.on("connect", () => {
-			console.log("✅ WebSocket connected!");
-		});
-
-		socket.on("disconnect", () => {
-			console.log("❌ WebSocket disconnected!");
-		});
-
-		setupSocketForState(socket, state.currentState);
-
-		const stabilityInterval = setInterval(() => {
-			if (Date.now() - refs.lastDataTime > STABILITY_UPDATE_INTERVAL) {
-				updateState({
-					stabilityTime: Math.max(state.stabilityTime - 1, 0),
-				});
-			}
-		}, STABILITY_UPDATE_INTERVAL);
-
-		return () => {
-			socket.disconnect();
-			clearTimeout(refs.timeout!);
-			clearInterval(stabilityInterval);
-		};
-	}, [
-		state.currentState,
-		state.stabilityTime,
-		handleTimeout,
-		handleDataEvent,
-		setupSocketForState,
-		refs,
-		updateState,
-	]);
-
-	useEffect(() => {
-		setSecondsLeft(15);
-		const interval = setInterval(() => {
-			setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
-		}, 1000);
-		return () => clearInterval(interval);
-	}, [state.currentState]);
 
 	const handleComplete = useCallback(async () => {
 		if (refs.isSubmitting) return;
@@ -240,20 +165,18 @@ export const useHealthCheck = (): HealthCheckState & {
 			const faceId = localStorage.getItem("faceId");
 			if (!faceId) throw new Error("Face ID not found");
 
-			const response = await fetch(
-				`${import.meta.env.VITE_SERVER_URL}/health`,
-				{
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						temperatureData: state.temperatureData,
-						alcoholData: state.alcoholData,
-						faceId,
-					}),
-				},
+			localStorage.setItem(
+				"results",
+				JSON.stringify({
+					temperature: state.temperatureData.temperature,
+					alcohol: state.alcoholData.alcoholLevel,
+				}),
 			);
 
-			if (!response.ok) throw new Error("Request failed");
+			console.log("✅ Final stored results:", {
+				temperature: state.temperatureData.temperature,
+				alcohol: state.alcoholData.alcoholLevel,
+			});
 
 			navigate("/complete-authentication", { state: { success: true } });
 		} catch (error) {
@@ -273,4 +196,9 @@ export const useHealthCheck = (): HealthCheckState & {
 						? newState(state.currentState)
 						: newState,
 			}),
-}};
+}
+
+};
+
+
+
