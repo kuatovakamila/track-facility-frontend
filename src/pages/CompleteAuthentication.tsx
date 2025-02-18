@@ -12,17 +12,20 @@ import { useLocation, useNavigate } from "react-router-dom";
 export default function CompleteAuthentication() {
 	const navigate = useNavigate();
 	const location = useLocation();
-	const [isSuccess, setIsSuccess] = useState(location.state?.success ?? true);
+	const [isSuccess, setIsSuccess] = useState(
+		location.state?.success === true
+	);
 
-	// ✅ Retrieve results from localStorage
+	// ✅ Retrieve results from localStorage safely
 	const results = (() => {
-        try {
-            return JSON.parse(localStorage.getItem("results") || "{}");
-        } catch (error) {
-            console.error("Error parsing results:", error);
-            return {};
-        }
-    })();
+		try {
+			const storedResults = localStorage.getItem("results");
+			return storedResults ? JSON.parse(storedResults) : {};
+		} catch (error) {
+			console.error("❌ Error parsing results:", error);
+			return {};
+		}
+	})();
 
 	// ✅ Ensure correct alcohol state is displayed
 	const alcoholStatus =
@@ -32,19 +35,28 @@ export default function CompleteAuthentication() {
 			? "Пьяный"
 			: "Не определено";
 
+	// ✅ Ensure temperature is properly displayed
+	const temperatureValue = results.temperature ?? "Не определено";
+
 	// ✅ Updated stats with the correct alcohol state
 	const stats = [
-		{ icon: Thermometer, value: results.temperature ?? "0", unit: "°C" },
-        { icon: Wine, value: alcoholStatus, unit: "" },
+		{ icon: Thermometer, value: temperatureValue, unit: "°C" },
+		{ icon: Wine, value: alcoholStatus, unit: "" },
 	];
 
+	// ✅ Redirect only if we have complete data
 	useEffect(() => {
+		if (!results.temperature || results.alcohol === "Не определено") {
+			console.warn("⚠️ Incomplete results received, not navigating.");
+			return;
+		}
+
 		const timer = setTimeout(() => {
 			navigate("/");
 		}, 5000);
 
 		return () => clearTimeout(timer);
-	}, [navigate]);
+	}, [navigate, results]);
 
 	return (
 		<div className="min-h-screen bg-black text-white flex flex-col">
