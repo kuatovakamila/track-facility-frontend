@@ -16,6 +16,7 @@ type SensorData = {
 	temperature?: string;
 	sober?: number;
 	drunk?: number;
+	ready?: number;
 };
 
 type HealthCheckState = {
@@ -110,10 +111,12 @@ export const useHealthCheck = (): HealthCheckState & {
 			clearTimeout(refs.timeout!);
 			refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-			// Determine alcohol status based on `sober` and `drunk`
+			// Wait for `ready === 0` before processing `sober` and `drunk`
 			let alcoholStatus = "Не определено";
-			if (data.sober === 0) alcoholStatus = "Трезвый";
-			if (data.drunk === 0) alcoholStatus = "Пьяный";
+			if (data.ready === 0) {
+				if (data.sober === 0) alcoholStatus = "Трезвый";
+				else if (data.drunk === 0) alcoholStatus = "Пьяный";
+			}
 
 			updateState({
 				stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
@@ -153,7 +156,6 @@ export const useHealthCheck = (): HealthCheckState & {
 	useEffect(() => {
 		console.log("🔗 Connecting to WebSocket:", import.meta.env.VITE_SERVER_URL);
 
-		// Reset timeout flag when state changes
 		refs.hasTimedOut = false;
 
 		const socket = io(import.meta.env.VITE_SERVER_URL, {
@@ -184,7 +186,6 @@ export const useHealthCheck = (): HealthCheckState & {
 			}
 		}, STABILITY_UPDATE_INTERVAL);
 
-		// Cleanup function
 		return () => {
 			socket.disconnect();
 			clearTimeout(refs.timeout!);
@@ -242,14 +243,6 @@ export const useHealthCheck = (): HealthCheckState & {
 
 			if (!response.ok) throw new Error("Request failed");
 
-			localStorage.setItem(
-				"results",
-				JSON.stringify({
-					temperature: state.temperatureData.temperature,
-					alcohol: state.alcoholData.alcoholLevel,
-				}),
-			);
-
 			navigate("/complete-authentication", { state: { success: true } });
 		} catch (error) {
 			console.error("Submission error:", error);
@@ -268,7 +261,6 @@ export const useHealthCheck = (): HealthCheckState & {
 						? newState(state.currentState)
 						: newState,
 			}),
-		
 		
 	};
 };
