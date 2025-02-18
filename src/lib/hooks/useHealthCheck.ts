@@ -178,39 +178,66 @@ export const useHealthCheck = (): HealthCheckState & {
         };
     }, [state.currentState, handleTimeout, handleDataEvent]);
 
-    const handleComplete = useCallback(async () => {
-        if (refs.isSubmitting) return;
-        refs.isSubmitting = true;
-
-        const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
-        if (currentIndex < STATE_SEQUENCE.length - 1) {
-            updateState({
-                currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0,
-            });
-            refs.isSubmitting = false;
-            return;
-        }
-
-        try {
-            refs.socket?.disconnect();
-            const faceId = localStorage.getItem("faceId");
-            if (!faceId) throw new Error("Face ID not found");
-
-            localStorage.setItem(
-                "results",
-                JSON.stringify({
-                    temperature: state.temperatureData.temperature ?? 0,
-                    alcohol: state.alcoholData.alcoholLevel ?? "Не определено",
-                })
-            );
-
-            navigate("/complete-authentication", { state: { success: true } });
-        } catch (error) {
-            console.error("Submission error:", error);
-            refs.isSubmitting = false;
-        }
-    }, [state, navigate, updateState]);
+	const handleComplete = useCallback(async () => {
+		if (refs.isSubmitting) return;
+		refs.isSubmitting = true;
+	
+		console.log("🚀 Checking state sequence...");
+	
+		const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
+		console.log("🔍 Current Index:", currentIndex, "State:", state.currentState);
+	
+		if (currentIndex < STATE_SEQUENCE.length - 1) {
+			console.log("⏭️ Moving to next state:", STATE_SEQUENCE[currentIndex + 1]);
+	
+			updateState({
+				currentState: STATE_SEQUENCE[currentIndex + 1], // ✅ Move to next check
+				stabilityTime: 0, // ✅ Reset stability for new state
+			});
+	
+			refs.isSubmitting = false;
+			return;
+		}
+	
+		try {
+			refs.socket?.disconnect();
+			const faceId = localStorage.getItem("faceId");
+			if (!faceId) throw new Error("Face ID not found");
+	
+			console.log("✅ All states completed, submitting final data...");
+	
+			const response = await fetch(
+				`${import.meta.env.VITE_SERVER_URL}/health`,
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						temperatureData: state.temperatureData,
+						alcoholData: state.alcoholData,
+						faceId,
+					}),
+				}
+			);
+	
+			if (!response.ok) throw new Error("Request failed");
+	
+			console.log("✅ Submission successful, navigating to complete authentication...");
+	
+			localStorage.setItem(
+				"results",
+				JSON.stringify({
+					temperature: state.temperatureData.temperature,
+					alcohol: state.alcoholData.alcoholLevel,
+				})
+			);
+	
+			navigate("/complete-authentication", { state: { success: true } });
+		} catch (error) {
+			console.error("❌ Submission error:", error);
+			refs.isSubmitting = false;
+		}
+	}, [state, navigate, refs, updateState]);
+	
 
     return {
         ...state,
