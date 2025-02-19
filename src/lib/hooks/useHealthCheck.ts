@@ -114,33 +114,36 @@ export const useHealthCheck = (): HealthCheckState & {
             }
 
             setState((prev) => {
-                if (prev.currentState === "ALCOHOL") {
-                    console.log("✅ Alcohol data received, completing progress.");
-                    return {
-                        ...prev,
-                        stabilityTime: MAX_STABILITY_TIME, 
-                        alcoholData: { alcoholLevel: alcoholStatus },
-                    };
-                }
+                const newStabilityTime = prev.currentState === "ALCOHOL" ? MAX_STABILITY_TIME : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME);
 
                 return {
                     ...prev,
-                    stabilityTime: prev.currentState === "TEMPERATURE"
-                        ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
-                        : prev.stabilityTime,
-                    temperatureData: prev.currentState === "TEMPERATURE"
-                        ? { temperature: Number(data.temperature) || 0 }
-                        : prev.temperatureData,
+                    stabilityTime: newStabilityTime,
+                    alcoholData: prev.currentState === "ALCOHOL" ? { alcoholLevel: alcoholStatus } : prev.alcoholData,
+                    temperatureData: prev.currentState === "TEMPERATURE" ? { temperature: Number(data.temperature) || 0 } : prev.temperatureData,
                 };
             });
 
-            // ✅ Navigate to temperature check only once
-            if (state.currentState === "TEMPERATURE" && !refs.hasNavigated) {
-                refs.hasNavigated = true;
-                setTimeout(() => navigate("/temperature-check"), 500);
+            // ✅ Prevent multiple navigation calls
+            if (data.cameraStatus && !refs.hasNavigated) {
+                if (data.cameraStatus === "failed") {
+                    console.warn("❌ Face ID failed, retrying...");
+                    toast.error("⚠️ Face ID failed. Please try again.", {
+                        duration: 3000,
+                        style: { background: "#ff4d4d", color: "#fff", borderRadius: "8px" },
+                    });
+                    return;
+                }
+
+                if (data.cameraStatus === "success") {
+                    console.log("✅ Face ID recognized, navigating to temperature check...");
+                    refs.hasNavigated = true; // ✅ Prevent multiple navigations
+                    setTimeout(() => navigate("/temperature-check"), 500);
+                    return;
+                }
             }
 
-            // ✅ Immediately trigger handleComplete when alcohol data is received
+            // ✅ Ensure authentication completes after alcohol data is received
             if (state.currentState === "ALCOHOL") {
                 setTimeout(handleComplete, 300);
             }
