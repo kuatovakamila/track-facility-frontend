@@ -9,11 +9,12 @@ const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
 
-// Type definitions
 type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
+    cameraStatus?: "failed" | "success"; // ✅ Добавляем обработку камеры
 };
+
 
 type HealthCheckState = {
     currentState: StateKey;
@@ -163,32 +164,82 @@ export const useHealthCheck = (): HealthCheckState & {
 		});
 	
 		configureSocketListeners(socket, state.currentState, {
-			onData: (data) => {
+			onData: (data: SensorData) => {
 				console.log("📡 Data Received:", data);
-	
-				if (state.currentState === "ALCOHOL" && data.alcoholLevel) {
+		
+				// ✅ Проверяем, существует ли `state.currentState`
+				const { currentState, temperatureData } = state;
+		
+				if (!currentState) {
+					console.warn("⚠️ currentState is undefined, cannot process data.");
+					return;
+				}
+		
+				// ✅ Обрабатываем состояние FACE_ID (проверяем `cameraStatus`)
+				if (currentState === "TEMPERATURE" && data.cameraStatus) {
+					console.log("📷 Camera Event Received:", data);
+		
+					if (data.cameraStatus === "failed") {
+						console.warn("❌ Camera Capture Failed, retrying Face ID.");
+		
+						// ✅ Останавливаем навигацию на экран температуры
+						updateState({ currentState: "TEMPERATURE" });
+		
+						// ✅ Показываем пользователю уведомление о повторной попытке Face ID
+						toast.error("⚠️ Face ID failed. Please try again.", {
+							duration: 3000,
+							style: { background: "#ff4d4d", color: "#fff", borderRadius: "8px" },
+						});
+		
+						return; // ✅ Прерываем выполнение, чтобы избежать ненужных переходов
+					}
+		
+					if (data.cameraStatus === "success") {
+						console.log("✅ Face ID recognized, moving to temperature check...");
+		
+						updateState({ currentState: "TEMPERATURE" });
+		
+						setTimeout(() => {
+							navigate("/temperature-check");
+						}, 500); // Небольшая задержка для корректного обновления состояния перед переходом
+					}
+				}
+		
+				// ✅ Обрабатываем TEMPERATURE
+				if (currentState === "TEMPERATURE" && typeof data.temperature === "number") {
+					updateState({
+						temperatureData: { temperature: data.temperature },
+					});
+				}
+		
+				// ✅ Обрабатываем ALCOHOL
+				if (currentState === "ALCOHOL" && typeof data.alcoholLevel === "string") {
 					console.log("📡 Alcohol Level:", data.alcoholLevel);
-	
-					// ✅ Ensure localStorage is updated correctly
+		
 					const alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
+		
+					// ✅ Обновляем `localStorage`
 					const newResults = {
-						temperature: state.temperatureData.temperature,
+						temperature: temperatureData.temperature,
 						alcohol: alcoholStatus,
 					};
-	
+		
 					localStorage.setItem("results", JSON.stringify(newResults));
 					console.log("✅ Updated LocalStorage:", newResults);
-	
-					// ✅ Force UI to update after setting localStorage
+		
 					setTimeout(() => {
 						navigate("/complete-authentication", { state: { success: true } });
-					}, 500); // Ensure localStorage updates before navigating
+					}, 500);
 				}
-	
+		
 				handleDataEvent(data);
 			},
 			onError: handleTimeout,
 		});
+		
+		
+		
+		
 	
 		return () => {
 			socket.disconnect(); // Only disconnect when component unmounts
