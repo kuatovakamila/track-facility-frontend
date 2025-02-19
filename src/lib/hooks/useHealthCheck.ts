@@ -169,18 +169,6 @@ export const useHealthCheck = (): HealthCheckState & {
         };
     }, [state.currentState, handleTimeout, handleDataEvent]);
 
-    // ✅ Keep WebSocket alive (heartbeat mechanism)
-    useEffect(() => {
-        const interval = setInterval(() => {
-            if (refs.socket?.connected) {
-                console.log("🔄 Sending heartbeat...");
-                refs.socket.emit("ping");
-            }
-        }, 10000); // Every 10 seconds
-
-        return () => clearInterval(interval);
-    }, []);
-
     // ✅ Handle authentication completion
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
@@ -239,5 +227,5 @@ export const useHealthCheck = (): HealthCheckState & {
     }, [state, navigate, updateState]);
 
     return { ...state, handleComplete, setCurrentState: (newState) =>
-		updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState })};
+		updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }), };
 };
