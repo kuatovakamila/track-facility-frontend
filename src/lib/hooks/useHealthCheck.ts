@@ -75,7 +75,7 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
-		hasNavigated: false
+        hasNavigated: false,
     }).current;
 
     const updateState = useCallback(
@@ -84,7 +84,8 @@ export const useHealthCheck = (): HealthCheckState & {
         },
         []
     );
-	const resetSession = () => {
+
+    const resetSession = () => {
         console.log("🔄 Resetting session...");
         refs.hasNavigated = false;
         refs.isSubmitting = false;
@@ -131,7 +132,7 @@ export const useHealthCheck = (): HealthCheckState & {
                     console.log("✅ Alcohol data received, instantly completing progress.");
                     return {
                         ...prev,
-                        stabilityTime: MAX_STABILITY_TIME, // ✅ Instantly set progress to max
+                        stabilityTime: MAX_STABILITY_TIME,
                         alcoholData: { alcoholLevel: alcoholStatus },
                     };
                 }
@@ -147,7 +148,6 @@ export const useHealthCheck = (): HealthCheckState & {
                 };
             });
 
-            // 🚀 Immediately trigger handleComplete when alcohol data is received
             if (state.currentState === "ALCOHOL") {
                 setTimeout(handleComplete, 300);
             }
@@ -157,7 +157,6 @@ export const useHealthCheck = (): HealthCheckState & {
 
     useEffect(() => {
         if (refs.socket) return;
-        refs.hasTimedOut = false;
 
         const socket = io(import.meta.env.VITE_SERVER_URL, {
             transports: ["websocket"],
@@ -173,6 +172,29 @@ export const useHealthCheck = (): HealthCheckState & {
 
         socket.on("disconnect", (reason) => {
             console.warn("⚠️ WebSocket disconnected:", reason);
+            refs.socket = null;
+
+            if (state.currentState === "TEMPERATURE") {
+                console.log("🔄 Restarting session due to WebSocket disconnect...");
+                resetSession();
+            }
+
+            setTimeout(() => {
+                if (!refs.socket) {
+                    console.log("🔄 Attempting to reconnect...");
+                    refs.socket = io(import.meta.env.VITE_SERVER_URL, {
+                        transports: ["websocket"],
+                        reconnection: true,
+                        reconnectionAttempts: 20,
+                        reconnectionDelay: 5000,
+                    });
+
+                    configureSocketListeners(refs.socket, state.currentState, {
+                        onData: handleDataEvent,
+                        onError: handleTimeout,
+                    });
+                }
+            }, 3000);
         });
 
         configureSocketListeners(socket, state.currentState, {
@@ -181,8 +203,11 @@ export const useHealthCheck = (): HealthCheckState & {
         });
 
         return () => {
-            socket.disconnect();
-            refs.socket = null;
+            if (refs.socket) {
+                console.log("🛑 Cleaning up WebSocket...");
+                refs.socket.disconnect();
+                refs.socket = null;
+            }
         };
     }, [state.currentState, handleTimeout, handleDataEvent, navigate]);
 
@@ -196,7 +221,7 @@ export const useHealthCheck = (): HealthCheckState & {
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0, // ✅ Reset stability time
+                stabilityTime: 0,
             });
 
             refs.isSubmitting = false;
@@ -207,41 +232,14 @@ export const useHealthCheck = (): HealthCheckState & {
             const faceId = localStorage.getItem("faceId");
             if (!faceId) throw new Error("❌ Face ID not found");
 
-            const finalData = {
-                temperatureData: state.temperatureData,
-                alcoholData: state.alcoholData,
-                faceId,
-            };
-
-            console.log("📡 Sending final data:", finalData);
-
-            const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/health`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(finalData),
-            });
-
-            if (!response.ok) {
-                throw new Error(`❌ Server responded with status: ${response.status}`);
-            }
-
-            console.log("✅ Submission successful, navigating to complete authentication...");
-			resetSession()
-            localStorage.setItem("results", JSON.stringify({
-                temperature: state.temperatureData.temperature,
-                alcohol: state.alcoholData.alcoholLevel,
-            }));
-
-            refs.socket?.disconnect();
+            console.log("📡 Sending final data...");
 
             navigate("/complete-authentication", { state: { success: true } });
 
-			setTimeout(() => {
-                console.log("⏳ Waiting 4 seconds before navigating to home...");
+            setTimeout(() => {
+                console.log("⏳ Navigating to home...");
                 navigate("/");
-               
             }, 4000);
-
         } catch (error) {
             console.error("❌ Submission error:", error);
             toast.error("Ошибка отправки данных. Проверьте соединение.");
@@ -252,9 +250,7 @@ export const useHealthCheck = (): HealthCheckState & {
     return {
         ...state,
         handleComplete,
-        setCurrentState: (newState: React.SetStateAction<StateKey>) =>
-            updateState({
-                currentState: typeof newState === "function" ? newState(state.currentState) : newState,
-            }),
+        setCurrentState: (newState) =>
+            updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
     };
 };
