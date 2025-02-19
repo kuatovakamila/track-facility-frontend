@@ -23,11 +23,11 @@ const itemVariants = {
 };
 
 export default function HealthCheck() {
-	const MAX_STABILITY_TIME = 7;
+	// const MAX_STABILITY_TIME = 7;
 
 	const {
 		currentState,
-		stabilityTime,
+		// stabilityTime,
 		// bpmData,
 		temperatureData,
 		alcoholData,
@@ -92,10 +92,10 @@ export default function HealthCheck() {
 	icon={state.icon}
 	value={displayValue ?? "loading"}
 	unit={state.unit}
-	progress={(stabilityTime / MAX_STABILITY_TIME) * 100}
 	onComplete={handleComplete}
-	isAlcohol={currentState === "ALCOHOL"} // ✅ Only delay for alcohol
+	isAlcohol={currentState === "ALCOHOL"} // ✅ Ensures full circle completion for alcohol
 />
+
 
 					{!displayValue && (
 						<span className="text-sm text-gray-400">

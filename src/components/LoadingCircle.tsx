@@ -23,37 +23,52 @@ type LoadingCircleProps = {
 	icon: Icon;
 	value: string | number | null;
 	unit: string;
-	progress: number;
 	onComplete: () => void;
-	isAlcohol?: boolean; // ✅ Flag for alcohol delay
+	isAlcohol?: boolean; // ✅ Detect if it's alcohol measurement
 };
 
 export const LoadingCircle = ({
 	icon: Icon,
 	value,
 	unit,
-	progress,
 	onComplete,
-	isAlcohol = false, // ✅ Default is false (temperature behaves normally)
+	isAlcohol = false, // ✅ Default is false (temperature works instantly)
 }: LoadingCircleProps) => {
+	const [progress, setProgress] = useState(0);
 	const [finalValue, setFinalValue] = useState<string | number | null>(null);
+	const [circleComplete, setCircleComplete] = useState(false);
 
-	// ✅ Only delay for alcohol, not for temperature
+	// ✅ Ensure the circle continues running even after the result is shown
 	useEffect(() => {
-		if (progress >= 100) {
-			if (isAlcohol) {
-				// ✅ Delay only for alcohol results
-				setTimeout(() => {
-					setFinalValue(value);
-					onComplete();
-				}, 1000); // 1-second delay for alcohol
-			} else {
-				// ✅ Show temperature immediately
-				setFinalValue(value);
-				onComplete();
-			}
+		let duration = isAlcohol ? 4000 : 1000; // ✅ 4 seconds for alcohol, 1 second for temperature
+		let step = isAlcohol ? 4 : 20; // ✅ Smooth transition
+
+		const interval = setInterval(() => {
+			setProgress((prev) => {
+				if (prev >= 100) {
+					clearInterval(interval);
+					setCircleComplete(true); // ✅ Mark the circle as fully completed
+					return 100;
+				}
+				return prev + step;
+			});
+		}, duration / 25); // ✅ Progress in 25 steps
+
+		return () => clearInterval(interval);
+	}, [isAlcohol]);
+
+	// ✅ Show result immediately but wait for the full circle to complete before finishing
+	useEffect(() => {
+		if (value && finalValue === null) {
+			setFinalValue(value);
 		}
-	}, [progress, value, onComplete, isAlcohol]);
+
+		if (circleComplete) {
+			setTimeout(() => {
+				onComplete();
+			}, isAlcohol ? 1000 : 0); // ✅ Small delay after full circle
+		}
+	}, [value, finalValue, circleComplete, onComplete, isAlcohol]);
 
 	return (
 		<motion.div className="relative w-48 h-48 md:w-56 md:h-56">
@@ -84,7 +99,7 @@ export const LoadingCircle = ({
 			<div className="absolute inset-0 flex flex-col items-center justify-center">
 				<Icon weight="bold" className="w-10 h-10 md:w-12 md:h-12 mb-2" />
 
-				{/* ✅ Show the result only after animation completes */}
+				{/* ✅ Show the result immediately but let the animation continue */}
 				{finalValue !== null ? (
 					<>
 						<span className="text-3xl md:text-4xl font-bold">{finalValue}</span>
