@@ -8,18 +8,19 @@ export default function CompleteAuthentication() {
     const navigate = useNavigate();
     const [results, setResults] = useState({ temperature: "Не определено", alcohol: "Не определено" });
 
-    // ✅ Load results from localStorage AFTER component mounts
+    // ✅ Load results AFTER component mounts to ensure updates
     useEffect(() => {
         const storedResults = localStorage.getItem("results");
         if (storedResults) {
             console.log("🔄 Updating results from LocalStorage:", storedResults);
             setResults(JSON.parse(storedResults));
         }
-    }, []); // Ensures we read the latest data on mount
+    }, []); // Ensures latest localStorage data is used
 
-    // ✅ Wait until localStorage is fully updated before redirecting
+    // ✅ Prevent navigation until correct values are received
     useEffect(() => {
         if (results.alcohol !== "Не определено" && results.temperature !== "Не определено") {
+            console.log("✅ Correct alcohol status received:", results.alcohol);
             const timer = setTimeout(() => {
                 navigate("/");
             }, 5000);

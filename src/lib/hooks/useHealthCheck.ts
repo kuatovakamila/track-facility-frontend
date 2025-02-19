@@ -142,9 +142,8 @@ export const useHealthCheck = (): HealthCheckState & {
         },
         [state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
     );
-
 	useEffect(() => {
-		if (refs.socket) return; // Prevent multiple socket instances
+		if (refs.socket) return;
 		refs.hasTimedOut = false;
 	
 		const socket = io(import.meta.env.VITE_SERVER_URL, {
@@ -170,18 +169,20 @@ export const useHealthCheck = (): HealthCheckState & {
 				if (state.currentState === "ALCOHOL" && data.alcoholLevel) {
 					console.log("📡 Alcohol Level:", data.alcoholLevel);
 	
-					// ✅ Ensure `localStorage` is updated correctly
+					// ✅ Ensure localStorage is updated correctly
+					const alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
 					const newResults = {
 						temperature: state.temperatureData.temperature,
-						alcohol: data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный",
+						alcohol: alcoholStatus,
 					};
 	
 					localStorage.setItem("results", JSON.stringify(newResults));
 					console.log("✅ Updated LocalStorage:", newResults);
 	
+					// ✅ Force UI to update after setting localStorage
 					setTimeout(() => {
 						navigate("/complete-authentication", { state: { success: true } });
-					}, 500); // Ensure localStorage update is processed before navigation
+					}, 500); // Ensure localStorage updates before navigating
 				}
 	
 				handleDataEvent(data);
@@ -194,6 +195,7 @@ export const useHealthCheck = (): HealthCheckState & {
 			refs.socket = null;
 		};
 	}, [state.currentState, handleTimeout, handleDataEvent, navigate]);
+	
 	
 	
     // Handle completion and state transitions
