@@ -1,23 +1,16 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import {
-	CheckCircle,
-	XCircle,
-	Thermometer,
-	Wine,
-} from "@phosphor-icons/react";
+import { CheckCircle, XCircle, Thermometer, Wine } from "@phosphor-icons/react";
 import { Header } from "../components/Header";
 import { useLocation, useNavigate } from "react-router-dom";
 
 export default function CompleteAuthentication() {
 	const navigate = useNavigate();
 	const location = useLocation();
-	const [isSuccess, setIsSuccess] = useState(
-		location.state?.success === true
-	);
+	const [isSuccess, setIsSuccess] = useState(location.state?.success === true);
 
-	// ✅ Retrieve results from localStorage safely
-	const results = (() => {
+	// ✅ LocalStorage must be read AFTER component mounts
+	const [results, setResults] = useState(() => {
 		try {
 			const storedResults = localStorage.getItem("results");
 			return storedResults ? JSON.parse(storedResults) : {};
@@ -25,7 +18,15 @@ export default function CompleteAuthentication() {
 			console.error("❌ Error parsing results:", error);
 			return {};
 		}
-	})();
+	});
+
+	// ✅ Use Effect to re-check LocalStorage after component mounts
+	useEffect(() => {
+		const storedResults = localStorage.getItem("results");
+		if (storedResults) {
+			setResults(JSON.parse(storedResults));
+		}
+	}, []); // This ensures we read the latest LocalStorage on mount
 
 	// ✅ Ensure correct alcohol state is displayed
 	const alcoholStatus =
@@ -44,10 +45,10 @@ export default function CompleteAuthentication() {
 		{ icon: Wine, value: alcoholStatus, unit: "" },
 	];
 
-	// ✅ Redirect only if we have complete data
+	// ✅ Prevent navigation until data is fully loaded
 	useEffect(() => {
 		if (!results.temperature || results.alcohol === "Не определено") {
-			console.warn("⚠️ Incomplete results received, not navigating.");
+			console.warn("⚠️ Incomplete results received, waiting for update...");
 			return;
 		}
 
