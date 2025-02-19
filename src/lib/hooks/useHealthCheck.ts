@@ -77,6 +77,9 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
         console.warn("⏳ Timeout reached");
+        if (state.currentState === "ALCOHOL") {
+            navigate("/");
+        }
     }, []);
 
     const handleDataEvent = useCallback(
