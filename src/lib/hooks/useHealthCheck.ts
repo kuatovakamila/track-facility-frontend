@@ -108,45 +108,50 @@ export const useHealthCheck = (): HealthCheckState & {
 		},
 		[state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
 	);
-
-	// ✅ WebSocket Initialization (Runs Once)
 	useEffect(() => {
 		if (refs.socket) return; // Prevent reinitialization
-
+	
 		refs.socket = io(import.meta.env.VITE_SERVER_URL, {
 			transports: ["websocket"],
 			reconnection: true,
 			reconnectionAttempts: 10,
 			reconnectionDelay: 2000,
 		});
-
-		// ✅ Log Connection Status
+	
 		refs.socket.on("connect", () => console.log("✅ WebSocket Connected"));
 		refs.socket.on("disconnect", (reason) => console.warn("⚠️ Disconnected:", reason));
-
-		// ✅ Set Up Listeners
+	
+		// ✅ Listen for alcohol data and navigate when "normal" or "abnormal"
 		refs.socket.on("alcohol", (data) => {
 			console.log("📡 Alcohol Data Received:", data);
-			handleDataEvent(data);
-
-			// ✅ Navigate if authentication is complete
+	
 			if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
 				console.log("✅ User is authenticated, navigating...");
 				navigate("/complete-authentication", { state: { success: true } });
+			} else {
+				console.warn("⚠️ Alcohol level is not valid for authentication.");
 			}
 		});
-
+	
+		// ✅ Listen for authentication completion event
+		refs.socket.on("authentication_complete", () => {
+			console.log("✅ Received authentication_complete event, navigating...");
+			navigate("/complete-authentication", { state: { success: true } });
+		});
+	
 		refs.socket.on("temperature", handleDataEvent);
 		refs.socket.on("error", handleTimeout);
-
+	
 		refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-
+	
 		return () => {
 			refs.socket?.off("temperature", handleDataEvent);
 			refs.socket?.off("alcohol");
+			refs.socket?.off("authentication_complete");
 			refs.socket?.off("error");
 		};
 	}, [navigate, handleTimeout, handleDataEvent]);
+	
 
 	// ✅ Stability Update Interval
 	useEffect(() => {
@@ -174,7 +179,7 @@ export const useHealthCheck = (): HealthCheckState & {
 	const handleComplete = useCallback(async () => {
 		if (refs.isSubmitting) return;
 		refs.isSubmitting = true;
-
+	
 		const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
 		if (currentIndex < STATE_SEQUENCE.length - 1) {
 			updateState({
@@ -184,11 +189,14 @@ export const useHealthCheck = (): HealthCheckState & {
 			refs.isSubmitting = false;
 			return;
 		}
-
+	
 		try {
 			const faceId = localStorage.getItem("faceId");
-			if (!faceId) throw new Error("Face ID not found");
-
+			if (!faceId) {
+				console.error("❌ Face ID not found! Authentication may fail.");
+				throw new Error("Face ID not found");
+			}
+	
 			const response = await fetch(
 				`${import.meta.env.VITE_SERVER_URL}/health`,
 				{
@@ -201,9 +209,9 @@ export const useHealthCheck = (): HealthCheckState & {
 					}),
 				},
 			);
-
+	
 			if (!response.ok) throw new Error("Request failed");
-
+	
 			localStorage.setItem(
 				"results",
 				JSON.stringify({
@@ -211,7 +219,7 @@ export const useHealthCheck = (): HealthCheckState & {
 					alcohol: state.alcoholData.alcoholLevel,
 				}),
 			);
-
+	
 			console.log("✅ Submission successful, navigating...");
 			navigate("/complete-authentication", { state: { success: true } });
 		} catch (error) {
@@ -219,6 +227,7 @@ export const useHealthCheck = (): HealthCheckState & {
 			refs.isSubmitting = false;
 		}
 	}, [state, navigate, updateState]);
+	
 
 	return {
 		...state,
