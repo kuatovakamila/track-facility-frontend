@@ -75,7 +75,7 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
-        hasNavigated: false, // ✅ Prevents multiple navigations
+        hasNavigated: false,
     }).current;
 
     const updateState = useCallback(
@@ -86,7 +86,7 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     const handleTimeout = useCallback(() => {
-        if (refs.hasTimedOut || refs.hasNavigated) return; // ✅ Prevent multiple navigations
+        if (refs.hasTimedOut || refs.hasNavigated) return;
         refs.hasTimedOut = true;
 
         toast.error(TIMEOUT_MESSAGE, {
@@ -113,37 +113,13 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
             }
 
-            setState((prev) => {
-                const newStabilityTime = prev.currentState === "ALCOHOL" ? MAX_STABILITY_TIME : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME);
+            setState((prev) => ({
+                ...prev,
+                stabilityTime: prev.currentState === "ALCOHOL" ? MAX_STABILITY_TIME : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
+                alcoholData: prev.currentState === "ALCOHOL" ? { alcoholLevel: alcoholStatus } : prev.alcoholData,
+                temperatureData: prev.currentState === "TEMPERATURE" ? { temperature: Number(data.temperature) || 0 } : prev.temperatureData,
+            }));
 
-                return {
-                    ...prev,
-                    stabilityTime: newStabilityTime,
-                    alcoholData: prev.currentState === "ALCOHOL" ? { alcoholLevel: alcoholStatus } : prev.alcoholData,
-                    temperatureData: prev.currentState === "TEMPERATURE" ? { temperature: Number(data.temperature) || 0 } : prev.temperatureData,
-                };
-            });
-
-            // ✅ Prevent multiple navigation calls
-            if (data.cameraStatus && !refs.hasNavigated) {
-                if (data.cameraStatus === "failed") {
-                    console.warn("❌ Face ID failed, retrying...");
-                    toast.error("⚠️ Face ID failed. Please try again.", {
-                        duration: 3000,
-                        style: { background: "#ff4d4d", color: "#fff", borderRadius: "8px" },
-                    });
-                    return;
-                }
-
-                if (data.cameraStatus === "success") {
-                    console.log("✅ Face ID recognized, navigating to temperature check...");
-                    refs.hasNavigated = true; // ✅ Prevent multiple navigations
-                    setTimeout(() => navigate("/temperature-check"), 500);
-                    return;
-                }
-            }
-
-            // ✅ Ensure authentication completes after alcohol data is received
             if (state.currentState === "ALCOHOL") {
                 setTimeout(handleComplete, 300);
             }
@@ -192,7 +168,7 @@ export const useHealthCheck = (): HealthCheckState & {
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0, 
+                stabilityTime: 0,
             });
 
             refs.isSubmitting = false;
@@ -225,7 +201,14 @@ export const useHealthCheck = (): HealthCheckState & {
 
             refs.socket?.disconnect();
 
+            // ✅ Navigate to complete authentication first
             navigate("/complete-authentication", { state: { success: true } });
+
+            // ✅ Wait 4 seconds, then navigate to the home screen
+            setTimeout(() => {
+                console.log("⏳ Waiting 4 seconds before navigating to home...");
+                navigate("/");
+            }, 4000); // 4000ms = 4 seconds
 
         } catch (error) {
             console.error("❌ Submission error:", error);
