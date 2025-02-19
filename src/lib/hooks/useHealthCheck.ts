@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
@@ -52,7 +52,6 @@ export const useHealthCheck = (): HealthCheckState & {
     setCurrentState: React.Dispatch<React.SetStateAction<StateKey>>;
 } => {
     const navigate = useNavigate();
-    const location = useLocation();
     const [state, setState] = useState<HealthCheckState>({
         currentState: "TEMPERATURE",
         stabilityTime: 0,
@@ -68,7 +67,7 @@ export const useHealthCheck = (): HealthCheckState & {
         hasTimedOut: false,
         isSubmitting: false,
         hasNavigated: false,
-        sessionCount: 0,
+        sessionCount: 0, // ✅ Track session count to ensure smooth transitions
     }).current;
 
     const updateState = useCallback(
@@ -160,13 +159,9 @@ export const useHealthCheck = (): HealthCheckState & {
         });
 
         return () => {
-            console.log("🛑 WebSocket will only disconnect if on home page or authentication is complete...");
-            if (location.pathname === "/" || location.pathname === "/complete-authentication") {
-                refs.socket?.disconnect();
-                refs.socket = null;
-            }
+            console.log("🛑 Not cleaning up event listeners until authentication is fully done...");
         };
-    }, [state.currentState, handleTimeout, handleDataEvent, location.pathname]);
+    }, [state.currentState, handleTimeout, handleDataEvent]);
 
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
@@ -201,6 +196,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
             navigate("/complete-authentication", { state: { success: true } });
 
+            // ✅ Do NOT disconnect WebSocket until after full authentication
             setTimeout(() => {
                 console.log("⏳ Returning to home and preparing next session...");
                 navigate("/");
@@ -222,14 +218,12 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.isSubmitting = false;
         } finally {
             setTimeout(() => {
-                if (location.pathname === "/complete-authentication" || location.pathname === "/") {
-                    console.log("🛑 Now disconnecting WebSocket...");
-                    refs.socket?.disconnect();
-                    refs.socket = null;
-                }
-            }, 5000);
+                console.log("🛑 Now disconnecting WebSocket after authentication is fully completed...");
+                refs.socket?.disconnect();
+                refs.socket = null;
+            }, 5000); // ✅ Delay disconnect to avoid mid-process issues
         }
-    }, [state, navigate, updateState, location.pathname]);
+    }, [state, navigate, updateState]);
 
     return {
         ...state,
@@ -238,7 +232,5 @@ export const useHealthCheck = (): HealthCheckState & {
             updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
     };
 };
-
-
 // setCurrentState: (newState) =>
 //updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
