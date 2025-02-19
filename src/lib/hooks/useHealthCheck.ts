@@ -222,7 +222,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 console.log("⏳ Waiting 4 seconds before navigating to home...");
                 navigate("/");
                 resetSession(); // ✅ Reset session after returning home
-            }, 4000);
+            }, 8000);
 
         } catch (error) {
             console.error("❌ Submission error:", error);
