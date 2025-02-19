@@ -113,25 +113,30 @@ export const useHealthCheck = (): HealthCheckState & {
             }
 
             setState((prev) => {
-                const newStabilityTime = Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME);
-                
-                // ✅ Force last update & trigger completion
-                if (newStabilityTime === MAX_STABILITY_TIME) {
-                    console.log("✅ Stability time reached MAX. Completing...");
-                    setTimeout(handleComplete, 500); // Smooth transition
+                if (prev.currentState === "ALCOHOL") {
+                    console.log("✅ Alcohol data received, instantly completing progress.");
+                    return {
+                        ...prev,
+                        stabilityTime: MAX_STABILITY_TIME, // ✅ Instantly set progress to max
+                        alcoholData: { alcoholLevel: alcoholStatus },
+                    };
                 }
 
                 return {
                     ...prev,
-                    stabilityTime: newStabilityTime,
-                    temperatureData: prev.currentState === "TEMPERATURE" 
-                        ? { temperature: Number(data.temperature) || 0 } 
+                    stabilityTime: prev.currentState === "TEMPERATURE"
+                        ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
+                        : prev.stabilityTime,
+                    temperatureData: prev.currentState === "TEMPERATURE"
+                        ? { temperature: Number(data.temperature) || 0 }
                         : prev.temperatureData,
-                    alcoholData: prev.currentState === "ALCOHOL"
-                        ? { alcoholLevel: alcoholStatus }
-                        : prev.alcoholData,
                 };
             });
+
+            // 🚀 Immediately trigger handleComplete when alcohol data is received
+            if (state.currentState === "ALCOHOL") {
+                setTimeout(handleComplete, 300);
+            }
         },
         [handleTimeout]
     );
