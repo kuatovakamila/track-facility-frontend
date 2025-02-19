@@ -77,7 +77,7 @@ export const useHealthCheck = (): HealthCheckState & {
         []
     );
 
-    // ✅ Timeout handler with retry
+    // ✅ Handle timeout with retry logic
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
@@ -87,12 +87,10 @@ export const useHealthCheck = (): HealthCheckState & {
             style: { background: "#272727", color: "#fff", borderRadius: "8px" },
         });
 
-        console.warn("⚠️ Timeout detected, but keeping WebSocket alive...");
         refs.socket?.emit("retry");
 
         setTimeout(() => {
             if (!refs.hasNavigated) {
-                console.log("🔄 Retrying authentication...");
                 updateState({ currentState: "TEMPERATURE", stabilityTime: 0 });
             }
         }, 5000);
@@ -116,29 +114,38 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
             }
 
-            setState((prev) => ({
-                ...prev,
-                stabilityTime: prev.currentState === "TEMPERATURE"
-                    ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
-                    : prev.stabilityTime,
-                temperatureData: prev.currentState === "TEMPERATURE"
-                    ? { temperature: Number(data.temperature) || 0 }
-                    : prev.temperatureData,
-                alcoholData: prev.currentState === "ALCOHOL"
-                    ? { alcoholLevel: alcoholStatus }
-                    : prev.alcoholData,
-            }));
+            setState((prev) => {
+                const isAlcoholStage = prev.currentState === "ALCOHOL";
+                const isTemperatureStage = prev.currentState === "TEMPERATURE";
 
-            if (state.currentState === "ALCOHOL") {
-                setTimeout(handleComplete, 300);
-            }
+                const newState = {
+                    ...prev,
+                    stabilityTime: isTemperatureStage
+                        ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
+                        : MAX_STABILITY_TIME, // ✅ Ensure stability reaches max in Alcohol stage
+                    temperatureData: isTemperatureStage
+                        ? { temperature: Number(data.temperature) || 0 }
+                        : prev.temperatureData,
+                    alcoholData: isAlcoholStage
+                        ? { alcoholLevel: alcoholStatus }
+                        : prev.alcoholData,
+                };
+
+                // ✅ Automatically trigger authentication completion if alcohol data received
+                if (isAlcoholStage) {
+                    console.log("✅ Alcohol data received, triggering completion...");
+                    setTimeout(handleComplete, 300);
+                }
+
+                return newState;
+            });
         },
         [handleTimeout]
     );
 
-    // ✅ WebSocket Connection (Reconnection for FaceID)
+    // ✅ WebSocket Connection
     const reconnectSocket = useCallback(() => {
-        if (refs.socket) return; // Prevent multiple connections
+        if (refs.socket) return;
 
         refs.socket = io(import.meta.env.VITE_SERVER_URL, {
             transports: ["websocket"],
@@ -154,7 +161,6 @@ export const useHealthCheck = (): HealthCheckState & {
         refs.socket.on("disconnect", (reason) => {
             console.warn("⚠️ WebSocket disconnected:", reason);
             if (!refs.hasNavigated) {
-                console.log("🔄 Attempting to reconnect...");
                 refs.socket?.connect();
             }
         });
@@ -174,9 +180,9 @@ export const useHealthCheck = (): HealthCheckState & {
         }
     }, []);
 
-    // ✅ WebSocket setup (initialization)
+    // ✅ WebSocket setup
     useEffect(() => {
-        reconnectSocket(); // Start WebSocket connection
+        reconnectSocket();
         return () => {
             console.log("🛑 Keeping WebSocket alive during authentication...");
         };
@@ -221,7 +227,7 @@ export const useHealthCheck = (): HealthCheckState & {
             navigate("/complete-authentication", { state: { success: true } });
 
             setTimeout(() => {
-                disconnectSocket(); // Disconnect WebSocket after authentication
+                disconnectSocket();
                 navigate("/");
                 setTimeout(() => {
                     updateState({
@@ -244,10 +250,11 @@ export const useHealthCheck = (): HealthCheckState & {
         ...state, 
         handleComplete, 
 		setCurrentState: (newState) =>
-            updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
-        reconnectSocket // Manually call this when FaceID starts 
+		updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
+        reconnectSocket 
     };
 };
+
 
 // setCurrentState: (newState) =>
 //updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
