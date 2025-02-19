@@ -108,50 +108,45 @@ export const useHealthCheck = (): HealthCheckState & {
 		},
 		[state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
 	);
+
+	// ✅ WebSocket Initialization (Runs Once)
 	useEffect(() => {
 		if (refs.socket) return; // Prevent reinitialization
-	
+
 		refs.socket = io(import.meta.env.VITE_SERVER_URL, {
 			transports: ["websocket"],
 			reconnection: true,
 			reconnectionAttempts: 10,
 			reconnectionDelay: 2000,
 		});
-	
+
+		// ✅ Log Connection Status
 		refs.socket.on("connect", () => console.log("✅ WebSocket Connected"));
 		refs.socket.on("disconnect", (reason) => console.warn("⚠️ Disconnected:", reason));
-	
-		// ✅ Listen for alcohol data and navigate when "normal" or "abnormal"
+
+		// ✅ Set Up Listeners
 		refs.socket.on("alcohol", (data) => {
 			console.log("📡 Alcohol Data Received:", data);
-	
+			handleDataEvent(data);
+
+			// ✅ Navigate if authentication is complete
 			if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
 				console.log("✅ User is authenticated, navigating...");
 				navigate("/complete-authentication", { state: { success: true } });
-			} else {
-				console.warn("⚠️ Alcohol level is not valid for authentication.");
 			}
 		});
-	
-		// ✅ Listen for authentication completion event
-		refs.socket.on("authentication_complete", () => {
-			console.log("✅ Received authentication_complete event, navigating...");
-			navigate("/complete-authentication", { state: { success: true } });
-		});
-	
+
 		refs.socket.on("temperature", handleDataEvent);
 		refs.socket.on("error", handleTimeout);
-	
+
 		refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-	
+
 		return () => {
 			refs.socket?.off("temperature", handleDataEvent);
 			refs.socket?.off("alcohol");
-			refs.socket?.off("authentication_complete");
 			refs.socket?.off("error");
 		};
 	}, [navigate, handleTimeout, handleDataEvent]);
-	
 
 	// ✅ Stability Update Interval
 	useEffect(() => {
@@ -175,7 +170,6 @@ export const useHealthCheck = (): HealthCheckState & {
 		return () => clearInterval(interval);
 	}, [state.currentState]);
 
-	// ✅ Handle Completion Logic
 	const handleComplete = useCallback(async () => {
 		if (refs.isSubmitting) return;
 		refs.isSubmitting = true;
