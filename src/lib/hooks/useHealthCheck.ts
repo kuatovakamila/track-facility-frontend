@@ -185,6 +185,12 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("📡 Sending final data...");
 
+            // ✅ Do NOT disconnect WebSocket until process is complete
+            localStorage.setItem("results", JSON.stringify({
+                temperature: state.temperatureData.temperature,
+                alcohol: state.alcoholData.alcoholLevel,
+            }));
+
             navigate("/complete-authentication", { state: { success: true } });
 
             setTimeout(() => {
@@ -196,11 +202,13 @@ export const useHealthCheck = (): HealthCheckState & {
             toast.error("Ошибка отправки данных. Проверьте соединение.");
             refs.isSubmitting = false;
         } finally {
-            // ✅ NOW WE CLEAN UP EVENT LISTENERS AFTER AUTHORIZATION IS COMPLETE
-            console.log("🛑 Cleaning up event listeners after full process is complete...");
+            // ✅ CLEANUP EVENT LISTENERS AFTER THE FULL AUTHORIZATION PROCESS
+            console.log("🛑 Cleaning up event listeners AFTER full authentication is complete...");
             refs.socket?.off("temperature");
             refs.socket?.off("alcohol");
             refs.socket?.off("camera");
+            refs.socket?.disconnect();
+            refs.socket = null; // Ensure WebSocket is properly reset
         }
     }, [state, navigate, updateState]);
 
