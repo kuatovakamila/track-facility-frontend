@@ -6,7 +6,7 @@ import { StateKey } from "../constants";
 // Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
-const PING_INTERVAL = 30000;
+
 
 // Define sensor data types
 type SensorData = {
@@ -88,8 +88,8 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
-        navigate("/");
-    }, [navigate]);
+        console.warn("⏳ Timeout reached, but preventing premature navigation");
+    }, []);
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
@@ -151,13 +151,6 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.socket.on("disconnect", (reason) => {
                 console.warn("⚠️ WebSocket disconnected, attempting to reconnect:", reason);
             });
-
-            refs.pingInterval = setInterval(() => {
-                if (refs.socket?.connected) {
-                    refs.socket.emit("ping");
-                    console.log("📡 Sent keep-alive ping to server");
-                }
-            }, PING_INTERVAL);
         }
 
         configureSocketListeners(refs.socket, state.currentState, {
@@ -171,12 +164,7 @@ export const useHealthCheck = (): HealthCheckState & {
         refs.isSubmitting = true;
 
         console.log("🚀 Completing health check...");
-        navigate("/complete-authentication");
-
-        setTimeout(() => {
-            console.log("⏳ Returning to home and preparing next session...");
-            navigate("/");
-        }, 4000);
+        navigate("/complete-authentication", { replace: true });
     }, [navigate, state.currentState]);
 
     return {
