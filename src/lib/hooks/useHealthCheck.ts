@@ -34,7 +34,7 @@ const configureSocketListeners = (
     socket.off("alcohol");
     socket.off("camera");
 
-    console.log(🔄 Setting up WebSocket listeners for state: ${currentState});
+    console.log(` Setting up WebSocket listeners for state: ${currentState}`);
 
     if (currentState === "TEMPERATURE") {
         socket.on("temperature", handlers.onData);
