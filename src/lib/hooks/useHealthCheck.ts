@@ -25,7 +25,7 @@ type HealthCheckState = {
 
 const configureSocketListeners = (
     socket: Socket,
-    currentState: StateKey,
+    currentState: StateKey | "FACE_ID",
     handlers: {
         onData: (data: SensorData) => void;
         onError: () => void;
@@ -36,13 +36,17 @@ const configureSocketListeners = (
     socket.off("camera");
 
     if (currentState === "TEMPERATURE") {
-        socket.on("temperature", handlers.onData);
+        socket.on("temperature", (data) => {
+            console.log("🔥 Temperature event received:", data);
+            handlers.onData(data);
+        });
     } else if (currentState === "ALCOHOL") {
         socket.on("alcohol", handlers.onData);
     }
 
     socket.on("camera", handlers.onData);
 };
+
 
 export const useHealthCheck = (): HealthCheckState & {
     handleComplete: () => Promise<void>;
