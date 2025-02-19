@@ -29,9 +29,9 @@ export default function CompleteAuthentication() {
 
 	// ✅ Ensure correct alcohol state is displayed
 	const alcoholStatus =
-		results.alcohol === "Трезвый"
+		results.alcohol === "normal"
 			? "Трезвый"
-			: results.alcohol === "Пьяный"
+			: results.alcohol === "abnormal"
 			? "Пьяный"
 			: "Не определено";
 
