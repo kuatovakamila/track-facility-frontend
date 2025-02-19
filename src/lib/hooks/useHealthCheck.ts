@@ -58,7 +58,7 @@ export const useHealthCheck = (): HealthCheckState & {
 } => {
     const navigate = useNavigate();
 
-    // Load state from localStorage to persist progress
+    // **Load state from localStorage to persist progress**
     const [state, setState] = useState<HealthCheckState>(() => {
         const savedState = localStorage.getItem("healthCheckState");
         return savedState ? JSON.parse(savedState) : {
@@ -82,7 +82,7 @@ export const useHealthCheck = (): HealthCheckState & {
         isSubmitting: false,
     }).current;
 
-    // Update state and persist to localStorage
+    // **Update State and Persist it to localStorage**
     const updateState = useCallback(
         <K extends keyof HealthCheckState>(updates: Pick<HealthCheckState, K>) => {
             setState((prev) => {
@@ -94,36 +94,38 @@ export const useHealthCheck = (): HealthCheckState & {
         []
     );
 
-    // Handle WebSocket timeout for Temperature & Alcohol
+    // **Prevent Unnecessary Navigation & Reset**
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
         console.warn("⏳ Timeout reached");
 
-        if (state.currentState !== "ALCOHOL") {
-            navigate("/");
-        }
-    }, [navigate, state.currentState]);
+        // **Save the last state before navigating**
+        localStorage.setItem("healthCheckState", JSON.stringify(state));
 
-    // Handle Alcohol Timeout
+        // **Navigate only if NOT already in alcohol stage**
+        if (state.currentState !== "ALCOHOL") {
+            navigate("/", { replace: true });
+        }
+    }, [navigate, state]);
+
     const handleAlcoholTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
         console.warn("⏳ Alcohol data timeout reached");
         updateState({ errorMessage: "⏳ Ошибка: Не удалось определить уровень алкоголя." });
-        navigate("/");
+        navigate("/", { replace: true });
     }, [navigate, updateState]);
 
-    // Handle Face ID Timeout Separately
     const handleFaceIdTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
         console.warn("⏳ Face ID timeout reached");
         updateState({ errorMessage: "⏳ Ошибка: Face ID не подтверждено." });
-        navigate("/");
+        navigate("/", { replace: true });
     }, [navigate, updateState]);
 
-    // Handle incoming WebSocket data
+    // **Handle incoming WebSocket data**
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             if (!data) return;
@@ -171,7 +173,7 @@ export const useHealthCheck = (): HealthCheckState & {
         [handleTimeout, handleAlcoholTimeout, handleFaceIdTimeout, state.faceIdVerified]
     );
 
-    // WebSocket Initialization
+    // **WebSocket Initialization**
     useEffect(() => {
         if (!refs.socket) {
             refs.socket = io(import.meta.env.VITE_SERVER_URL, {
@@ -188,7 +190,7 @@ export const useHealthCheck = (): HealthCheckState & {
         });
     }, [state.currentState, handleTimeout, handleDataEvent]);
 
-    // Handle completion and reset state
+    // **Handle completion and reset state**
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || state.currentState !== "ALCOHOL" || !state.faceIdVerified) return;
         refs.isSubmitting = true;
