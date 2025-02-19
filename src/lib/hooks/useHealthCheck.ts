@@ -4,14 +4,12 @@ import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
 
-// **Constants**
+// Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
-const STABILITY_UPDATE_INTERVAL = 1000;
-const TIMEOUT_MESSAGE =
-    "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
+const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
 
-// **Type Definitions**
+// Type definitions
 type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
@@ -46,9 +44,8 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
+        alcoholMeasured: false, // ✅ Track alcohol measurement completion
     }).current;
-
-    const [isAlcoholComplete, setIsAlcoholComplete] = useState(false);
 
     const updateState = useCallback(
         <K extends keyof HealthCheckState>(updates: Pick<HealthCheckState, K>) => {
@@ -75,65 +72,47 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             if (!data) return;
-
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
             let newStabilityTime = state.stabilityTime;
-            let isAlcoholMeasured = false;
 
-            // ✅ Temperature behaves as usual (progresses gradually)
+            // ✅ Temperature works as usual
             if (state.currentState === "TEMPERATURE" && data.temperature) {
                 newStabilityTime = Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME);
             }
 
-            // ✅ Alcohol completes only after receiving "normal" or "abnormal"
+            let alcoholStatus = state.alcoholData.alcoholLevel;
+
+            // ✅ Ensure alcohol only completes when "normal" or "abnormal" received
             if (state.currentState === "ALCOHOL" && data.alcoholLevel) {
                 console.log("📡 Alcohol Data Received:", data.alcoholLevel);
-
                 if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
-                    isAlcoholMeasured = true;
-                    setIsAlcoholComplete(true);
+                    alcoholStatus = data.alcoholLevel;
+                    refs.alcoholMeasured = true; // ✅ Mark alcohol as measured
                 }
             }
 
             updateState({
-                stabilityTime: newStabilityTime, 
-                temperatureData:
-                    state.currentState === "TEMPERATURE"
-                        ? { temperature: Number(data.temperature) }
-                        : state.temperatureData,
-                alcoholData:
-                    state.currentState === "ALCOHOL"
-                        ? { alcoholLevel: data.alcoholLevel || "Не определено" }
-                        : state.alcoholData,
+                stabilityTime: newStabilityTime,
+                temperatureData: state.currentState === "TEMPERATURE"
+                    ? { temperature: Number(data.temperature) }
+                    : state.temperatureData,
+                alcoholData: state.currentState === "ALCOHOL"
+                    ? { alcoholLevel: alcoholStatus }
+                    : state.alcoholData,
             });
 
-            // ✅ Progress bar completes in 4 seconds for alcohol
-            if (isAlcoholMeasured) {
-                let alcoholTimer = 0;
-                const interval = setInterval(() => {
-                    setState((prev) => {
-                        if (alcoholTimer >= 4) {
-                            clearInterval(interval);
-                        }
-                        alcoholTimer += 1;
-                        return { ...prev, stabilityTime: Math.min(prev.stabilityTime + 2, MAX_STABILITY_TIME) };
-                    });
-                }, 1000); // ⏳ Completes in 4 seconds
+            // ✅ After alcohol measurement, ensure full spin before completing
+            if (refs.alcoholMeasured) {
+                setTimeout(() => {
+                    handleComplete();
+                }, 4000); // ⏳ Let the loading circle complete its animation
             }
         },
         [state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
     );
-
-    // ✅ Runs when alcohol measurement is completed
-    useEffect(() => {
-        if (isAlcoholComplete) {
-            setTimeout(handleComplete, 4000); // ⏳ Wait for 4 seconds before completing
-            setIsAlcoholComplete(false);
-        }
-    }, [isAlcoholComplete]);
 
     useEffect(() => {
         if (refs.socket) return;
@@ -155,8 +134,18 @@ export const useHealthCheck = (): HealthCheckState & {
             console.warn("⚠️ WebSocket disconnected:", reason);
         });
 
-        socket.on("temperature", handleDataEvent);
-        socket.on("alcohol", handleDataEvent);
+        // ✅ Listen for Alcohol Data
+        socket.on("alcohol", (data) => {
+            console.log("📡 Alcohol Data Received:", data);
+            handleDataEvent(data);
+        });
+
+        // ✅ Listen for Temperature Data
+        socket.on("temperature", (data) => {
+            console.log("🌡 Temperature Data Received:", data);
+            handleDataEvent(data);
+        });
+
         socket.on("error", handleTimeout);
 
         refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
@@ -166,19 +155,6 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.socket = null;
         };
     }, [handleTimeout, handleDataEvent]);
-
-    // ✅ **Stability Time Reduction when no new data received**
-    useEffect(() => {
-        const stabilityInterval = setInterval(() => {
-            if (Date.now() - refs.lastDataTime > STABILITY_UPDATE_INTERVAL) {
-                updateState({
-                    stabilityTime: Math.max(state.stabilityTime - 1, 0), // ⬇️ Reduce stability if no data
-                });
-            }
-        }, STABILITY_UPDATE_INTERVAL);
-
-        return () => clearInterval(stabilityInterval);
-    }, [state.stabilityTime, updateState]);
 
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
@@ -194,8 +170,9 @@ export const useHealthCheck = (): HealthCheckState & {
             return;
         }
 
-        if (state.currentState === "ALCOHOL" && (state.alcoholData.alcoholLevel === "Не определено" || state.alcoholData.alcoholLevel === "")) {
-            console.warn("⚠️ No alcohol data received! Redirecting...");
+        // ✅ Ensure alcohol measurement was received before proceeding
+        if (state.currentState === "ALCOHOL" && !refs.alcoholMeasured) {
+            console.warn("⚠️ No valid alcohol data received! Redirecting...");
             toast.error("Не удалось измерить уровень алкоголя. Попробуйте снова.");
             navigate("/");
             return;
@@ -215,7 +192,7 @@ export const useHealthCheck = (): HealthCheckState & {
                         alcoholData: state.alcoholData,
                         faceId,
                     }),
-                },
+                }
             );
 
             if (!response.ok) throw new Error("Request failed");
