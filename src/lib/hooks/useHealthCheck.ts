@@ -12,7 +12,7 @@ const TIMEOUT_MESSAGE = "Не удается отследить данные, п
 type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
-    cameraStatus?: "failed" | "success"; // ✅ Добавляем обработку камеры
+    cameraState?: "failed" | "success"; // ✅ Добавляем обработку камеры
 };
 
 
@@ -163,79 +163,101 @@ export const useHealthCheck = (): HealthCheckState & {
 			console.warn("⚠️ WebSocket disconnected:", reason);
 		});
 	
-		configureSocketListeners(socket, state.currentState, {
-			onData: (data: SensorData) => {
-				console.log("📡 Data Received:", data);
-		
-				// ✅ Проверяем, существует ли `state.currentState`
-				const { currentState, temperatureData } = state;
-		
-				if (!currentState) {
-					console.warn("⚠️ currentState is undefined, cannot process data.");
-					return;
-				}
-		
-				// ✅ Обрабатываем состояние FACE_ID (проверяем `cameraStatus`)
-				if (currentState === "TEMPERATURE" && data.cameraStatus) {
-					console.log("📷 Camera Event Received:", data);
-		
-					if (data.cameraStatus === "failed") {
-						console.warn("❌ Camera Capture Failed, retrying Face ID.");
-		
-						// ✅ Останавливаем навигацию на экран температуры
-						updateState({ currentState: "TEMPERATURE" });
-		
-						// ✅ Показываем пользователю уведомление о повторной попытке Face ID
-						toast.error("⚠️ Face ID failed. Please try again.", {
-							duration: 3000,
-							style: { background: "#ff4d4d", color: "#fff", borderRadius: "8px" },
-						});
-		
-						return; // ✅ Прерываем выполнение, чтобы избежать ненужных переходов
-					}
-		
-					if (data.cameraStatus === "success") {
-						console.log("✅ Face ID recognized, moving to temperature check...");
-		
-						updateState({ currentState: "TEMPERATURE" });
-		
-						setTimeout(() => {
-							navigate("/temperature-check");
-						}, 500); // Небольшая задержка для корректного обновления состояния перед переходом
-					}
-				}
-		
-				// ✅ Обрабатываем TEMPERATURE
-				if (currentState === "TEMPERATURE" && typeof data.temperature === "number") {
-					updateState({
-						temperatureData: { temperature: data.temperature },
-					});
-				}
-		
-				// ✅ Обрабатываем ALCOHOL
-				if (currentState === "ALCOHOL" && typeof data.alcoholLevel === "string") {
-					console.log("📡 Alcohol Level:", data.alcoholLevel);
-		
-					const alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
-		
-					// ✅ Обновляем `localStorage`
-					const newResults = {
-						temperature: temperatureData.temperature,
-						alcohol: alcoholStatus,
-					};
-		
-					localStorage.setItem("results", JSON.stringify(newResults));
-					console.log("✅ Updated LocalStorage:", newResults);
-		
-					setTimeout(() => {
-						navigate("/complete-authentication", { state: { success: true } });
-					}, 500);
-				}
-		
-				handleDataEvent(data);
-			},
-			onError: handleTimeout,
-		});
+		const ALCOHOL_TIMEOUT_MS = 10000; // 10 seconds timeout
+let alcoholTimeoutRef: NodeJS.Timeout | null = null;
+
+configureSocketListeners(socket, state.currentState, {
+    onData: (data: SensorData) => {
+        console.log("📡 Data Received:", data);
+
+        // ✅ Ensure `state.currentState` exists
+        const { currentState, temperatureData } = state;
+
+        if (!currentState) {
+            console.warn("⚠️ currentState is undefined, cannot process data.");
+            return;
+        }
+
+        // ✅ Handling CAMERA / FACE_ID state
+        if (currentState === "TEMPERATURE" && data.cameraState) {
+            console.log("📷 Camera Event Received:", data);
+
+            if (data.cameraState === "failed") {
+                console.warn("❌ Camera Capture Failed, retrying Face ID.");
+                updateState({ currentState: "TEMPERATURE" });
+
+                toast.error("⚠️ Face ID failed. Please try again.", {
+                    duration: 3000,
+                    style: { background: "#ff4d4d", color: "#fff", borderRadius: "8px" },
+                });
+
+                return;
+            }
+
+            if (data.cameraState === "success") {
+                console.log("✅ Face ID recognized, moving to temperature check...");
+                updateState({ currentState: "TEMPERATURE" });
+
+                setTimeout(() => {
+                    navigate("/temperature-check");
+                }, 500);
+            }
+        }
+
+        // ✅ Handling TEMPERATURE state
+        if (currentState === "TEMPERATURE" && typeof data.temperature === "number") {
+            updateState({
+                temperatureData: { temperature: data.temperature },
+            });
+
+            // ✅ Move to alcohol state after recording temperature
+            updateState({ currentState: "ALCOHOL" });
+
+            // Start timeout timer for alcohol detection
+            if (alcoholTimeoutRef) clearTimeout(alcoholTimeoutRef);
+            alcoholTimeoutRef = setTimeout(() => {
+                console.warn("⚠️ Alcohol detection timeout! No response received.");
+
+                toast.error("⚠️ Alcohol detection failed. Please try again.", {
+                    duration: 3000,
+                    style: { background: "#ff4d4d", color: "#fff", borderRadius: "8px" },
+                });
+
+                // Retry alcohol detection by resetting state
+                updateState({ currentState: "ALCOHOL" });
+            }, ALCOHOL_TIMEOUT_MS);
+        }
+
+        // ✅ Handling ALCOHOL state
+        if (currentState === "ALCOHOL" && typeof data.alcoholLevel === "string") {
+            console.log("📡 Alcohol Level:", data.alcoholLevel);
+
+            if (alcoholTimeoutRef) {
+                clearTimeout(alcoholTimeoutRef);
+                alcoholTimeoutRef = null;
+            }
+
+            const alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
+
+            // ✅ Ensure `localStorage` is updated correctly
+            const newResults = {
+                temperature: temperatureData.temperature,
+                alcohol: alcoholStatus,
+            };
+
+            localStorage.setItem("results", JSON.stringify(newResults));
+            console.log("✅ Updated LocalStorage:", newResults);
+
+            setTimeout(() => {
+                navigate("/complete-authentication", { state: { success: true } });
+            }, 500);
+        }
+
+        handleDataEvent(data);
+    },
+    onError: handleTimeout,
+});
+
 		
 		
 		
