@@ -33,7 +33,7 @@ const configureSocketListeners = (
         onError: () => void;
     }
 ) => {
-    // ✅ REMOVE ALL PREVIOUS LISTENERS TO AVOID DUPLICATES
+    // ✅ REMOVE PREVIOUS LISTENERS BEFORE ADDING NEW ONES
     socket.off("temperature");
     socket.off("alcohol");
     socket.off("camera");
@@ -75,20 +75,6 @@ export const useHealthCheck = (): HealthCheckState & {
         },
         []
     );
-
-    // const resetSession = () => {
-    //     console.log("🔄 Resetting session...");
-    //     refs.hasNavigated = false;
-    //     refs.isSubmitting = false;
-    //     refs.hasTimedOut = false;
-    //     setState({
-    //         currentState: "TEMPERATURE",
-    //         stabilityTime: 0,
-    //         temperatureData: { temperature: 0 },
-    //         alcoholData: { alcoholLevel: "Не определено" },
-    //         secondsLeft: 15,
-    //     });
-    // };
 
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
@@ -165,17 +151,14 @@ export const useHealthCheck = (): HealthCheckState & {
             });
         }
 
-        // ✅ REMOVE PREVIOUS LISTENERS BEFORE ADDING NEW ONES
+        // ✅ KEEP EVENT LISTENERS UNTIL AUTHORIZATION IS COMPLETE
         configureSocketListeners(refs.socket, state.currentState, {
             onData: handleDataEvent,
             onError: handleTimeout,
         });
 
         return () => {
-            console.log("🛑 Cleaning up event listeners...");
-            refs.socket?.off("temperature");
-            refs.socket?.off("alcohol");
-            refs.socket?.off("camera");
+            console.log("🛑 Not cleaning up event listeners until authorization is complete...");
         };
     }, [state.currentState, handleTimeout, handleDataEvent]);
 
@@ -212,6 +195,12 @@ export const useHealthCheck = (): HealthCheckState & {
             console.error("❌ Submission error:", error);
             toast.error("Ошибка отправки данных. Проверьте соединение.");
             refs.isSubmitting = false;
+        } finally {
+            // ✅ NOW WE CLEAN UP EVENT LISTENERS AFTER AUTHORIZATION IS COMPLETE
+            console.log("🛑 Cleaning up event listeners after full process is complete...");
+            refs.socket?.off("temperature");
+            refs.socket?.off("alcohol");
+            refs.socket?.off("camera");
         }
     }, [state, navigate, updateState]);
 
