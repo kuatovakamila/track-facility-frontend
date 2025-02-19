@@ -75,7 +75,7 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
-		hasNavigated:false
+		hasNavigated: false
     }).current;
 
     const updateState = useCallback(
@@ -227,13 +227,12 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("✅ Submission successful, navigating to complete authentication...");
 			resetSession()
-
             localStorage.setItem("results", JSON.stringify({
                 temperature: state.temperatureData.temperature,
                 alcohol: state.alcoholData.alcoholLevel,
             }));
 
-            
+            refs.socket?.disconnect();
 
             navigate("/complete-authentication", { state: { success: true } });
 
