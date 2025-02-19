@@ -153,17 +153,23 @@ export const useHealthCheck = (): HealthCheckState & {
 			console.warn("⚠️ WebSocket disconnected:", reason);
 		});
 	
-		socket.on("alcohol", (data) => {
-			console.log("📡 Alcohol Data Received:", data);
-			if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
-				console.log("✅ User is sober or drunk, navigating to authentication completion...");
-				navigate("/complete-authentication", { state: { success: true } });
-			}
-		});
-	
-		// 🔥 **Ensure configureSocketListeners is called correctly**
+		// 🔥 **Move alcohol listener into `configureSocketListeners` to avoid conflicts**
 		configureSocketListeners(socket, state.currentState, {
-			onData: handleDataEvent,
+			onData: (data) => {
+				console.log("📡 Data Received:", data);
+	
+				// Ensure final state receives "sober" or "abnormal"
+				if (state.currentState === "ALCOHOL" && data.alcoholLevel) {
+					console.log("📡 Alcohol Level:", data.alcoholLevel);
+	
+					if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
+						console.log("✅ Final state received alcohol status:", data.alcoholLevel);
+						navigate("/complete-authentication", { state: { success: true } });
+					}
+				}
+	
+				handleDataEvent(data);
+			},
 			onError: handleTimeout,
 		});
 	
@@ -175,7 +181,6 @@ export const useHealthCheck = (): HealthCheckState & {
 			refs.socket = null;
 		};
 	}, [state.currentState, handleTimeout, handleDataEvent, navigate]);
-	
 	
     // Handle completion and state transitions
     const handleComplete = useCallback(async () => {
