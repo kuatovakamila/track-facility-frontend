@@ -3,7 +3,6 @@ import { Header } from "../components/Header";
 import { LoadingCircle } from "../components/LoadingCircle";
 import { STATES } from "../lib/constants";
 import { motion, AnimatePresence } from "framer-motion";
-import type { Icon } from "@phosphor-icons/react";
 
 const containerVariants = {
 	hidden: { opacity: 0 },
@@ -23,30 +22,20 @@ const itemVariants = {
 };
 
 export default function HealthCheck() {
-const MAX_STABILITY_TIME = 7;
+	const MAX_STABILITY_TIME = 7;
 
 	const {
 		currentState,
-		 stabilityTime,
-		// bpmData,
+		stabilityTime,
 		temperatureData,
 		alcoholData,
 		secondsLeft,
 		handleComplete,
 	} = useHealthCheck();
 
-	const state = STATES[currentState] as {
-		title: string;
-		subtitle: string;
-		icon: Icon;
-		value: string;
-		unit: string;
-	};
+	const state = STATES[currentState]; // ✅ Fix TypeScript error
 
 	let displayValue: string | number | null = null;
-	// if (currentState === "PULSE" && bpmData) {
-	// 	displayValue = Number(bpmData.bpm);
-	// } else
 	if (currentState === "TEMPERATURE" && temperatureData) {
 		displayValue = Number(temperatureData.temperature);
 	} else if (currentState === "ALCOHOL" && alcoholData) {
@@ -87,18 +76,14 @@ const MAX_STABILITY_TIME = 7;
 				</AnimatePresence>
 
 				<div className="flex flex-col items-center gap-4">
-				<LoadingCircle
-	key={currentState}
-	icon={state.icon}
-	value={displayValue ?? "loading"}
-	unit={state.unit}
-	progress={(stabilityTime / MAX_STABILITY_TIME) * 100}
-	onComplete={handleComplete}
-	isAlcohol={currentState === "ALCOHOL"}
-	hasReceivedFinalState={displayValue === "Трезвый" || displayValue === "Пьяный"} // ✅ Stops circle if waiting for data
-/>
-
-
+					<LoadingCircle
+						key={currentState}
+						icon={state.icon} // ✅ Use `state.icon` directly
+						value={displayValue ?? "loading"}
+						unit={state.unit} // ✅ Use `state.unit` directly
+						progress={(stabilityTime / MAX_STABILITY_TIME) * 100}
+						onComplete={handleComplete}
+					/>
 
 					{!displayValue && (
 						<span className="text-sm text-gray-400">
