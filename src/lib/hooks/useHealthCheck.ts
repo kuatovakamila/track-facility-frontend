@@ -98,7 +98,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 return {
                     ...prev,
                     stabilityTime: isTemperatureStable ? 0 : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
-                    temperatureData: prev.currentState === "TEMPERATURE" ? { temperature: Number(data.temperature) || 0 } : prev.temperatureData,
+                    temperatureData: prev.currentState === "TEMPERATURE" ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 } : prev.temperatureData,
                     alcoholData: prev.currentState === "ALCOHOL" ? { alcoholLevel: alcoholStatus } : prev.alcoholData,
                     currentState: nextState,
                 };
