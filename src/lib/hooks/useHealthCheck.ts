@@ -170,10 +170,11 @@ export const useHealthCheck = (): HealthCheckState & {
 		return () => clearInterval(interval);
 	}, [state.currentState]);
 
+	// ✅ Handle Completion Logic
 	const handleComplete = useCallback(async () => {
 		if (refs.isSubmitting) return;
 		refs.isSubmitting = true;
-	
+
 		const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
 		if (currentIndex < STATE_SEQUENCE.length - 1) {
 			updateState({
@@ -183,14 +184,11 @@ export const useHealthCheck = (): HealthCheckState & {
 			refs.isSubmitting = false;
 			return;
 		}
-	
+
 		try {
 			const faceId = localStorage.getItem("faceId");
-			if (!faceId) {
-				console.error("❌ Face ID not found! Authentication may fail.");
-				throw new Error("Face ID not found");
-			}
-	
+			if (!faceId) throw new Error("Face ID not found");
+
 			const response = await fetch(
 				`${import.meta.env.VITE_SERVER_URL}/health`,
 				{
@@ -203,9 +201,9 @@ export const useHealthCheck = (): HealthCheckState & {
 					}),
 				},
 			);
-	
+
 			if (!response.ok) throw new Error("Request failed");
-	
+
 			localStorage.setItem(
 				"results",
 				JSON.stringify({
@@ -213,7 +211,7 @@ export const useHealthCheck = (): HealthCheckState & {
 					alcohol: state.alcoholData.alcoholLevel,
 				}),
 			);
-	
+
 			console.log("✅ Submission successful, navigating...");
 			navigate("/complete-authentication", { state: { success: true } });
 		} catch (error) {
@@ -221,7 +219,6 @@ export const useHealthCheck = (): HealthCheckState & {
 			refs.isSubmitting = false;
 		}
 	}, [state, navigate, updateState]);
-	
 
 	return {
 		...state,
