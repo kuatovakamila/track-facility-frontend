@@ -147,9 +147,8 @@ export const useHealthCheck = (): HealthCheckState & {
 		if (refs.socket) return; // Prevent multiple socket instances
 		refs.hasTimedOut = false;
 	
-		// Initialize WebSocket connection
 		const socket = io(import.meta.env.VITE_SERVER_URL, {
-			transports: ["websocket"], // Ensure WebSocket transport
+			transports: ["websocket"],
 			reconnection: true,
 			reconnectionAttempts: 20,
 			reconnectionDelay: 10000,
@@ -157,26 +156,32 @@ export const useHealthCheck = (): HealthCheckState & {
 	
 		socket.on("connect", () => {
 			console.log("✅ WebSocket connected successfully.");
-			refs.socket = socket; // Store socket instance after successful connection
+			refs.socket = socket;
 		});
 	
 		socket.on("disconnect", (reason) => {
 			console.warn("⚠️ WebSocket disconnected:", reason);
 		});
 	
-		// 🔥 **Move alcohol listener into `configureSocketListeners` to avoid conflicts**
 		configureSocketListeners(socket, state.currentState, {
 			onData: (data) => {
 				console.log("📡 Data Received:", data);
 	
-				// Ensure final state receives "sober" or "abnormal"
 				if (state.currentState === "ALCOHOL" && data.alcoholLevel) {
 					console.log("📡 Alcohol Level:", data.alcoholLevel);
 	
-					if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
-						console.log("✅ Final state received alcohol status:", data.alcoholLevel);
+					// ✅ Ensure `localStorage` is updated correctly
+					const newResults = {
+						temperature: state.temperatureData.temperature,
+						alcohol: data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный",
+					};
+	
+					localStorage.setItem("results", JSON.stringify(newResults));
+					console.log("✅ Updated LocalStorage:", newResults);
+	
+					setTimeout(() => {
 						navigate("/complete-authentication", { state: { success: true } });
-					}
+					}, 500); // Ensure localStorage update is processed before navigation
 				}
 	
 				handleDataEvent(data);
@@ -185,13 +190,11 @@ export const useHealthCheck = (): HealthCheckState & {
 		});
 	
 		return () => {
-			// Cleanup WebSocket listeners and disconnect
-			socket.off("alcohol");
-			socket.off("authentication_complete");
-			socket.disconnect();
+			socket.disconnect(); // Only disconnect when component unmounts
 			refs.socket = null;
 		};
 	}, [state.currentState, handleTimeout, handleDataEvent, navigate]);
+	
 	
     // Handle completion and state transitions
     const handleComplete = useCallback(async () => {
