@@ -7,13 +7,13 @@ import { StateKey } from "../constants";
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 const ALCOHOL_TIMEOUT = 10000;
-const FACEID_TIMEOUT = 20000; // Timeout for Face ID verification
+// const FACEID_TIMEOUT = 20000;
 
 // Define sensor data types
 type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
-    cameraStatus?: 'failed' | 'success';
+    cameraStatus?: "failed" | "success";
 };
 
 type HealthCheckState = {
@@ -58,18 +58,20 @@ export const useHealthCheck = (): HealthCheckState & {
 } => {
     const navigate = useNavigate();
 
-    // **Load state from localStorage to persist progress**
+    // Load state from localStorage
     const [state, setState] = useState<HealthCheckState>(() => {
         const savedState = localStorage.getItem("healthCheckState");
-        return savedState ? JSON.parse(savedState) : {
-            currentState: "TEMPERATURE",
-            stabilityTime: 0,
-            temperatureData: { temperature: 0 },
-            alcoholData: { alcoholLevel: "Не определено" },
-            secondsLeft: 15,
-            faceIdVerified: false,
-            errorMessage: "",
-        };
+        return savedState
+            ? JSON.parse(savedState)
+            : {
+                  currentState: "TEMPERATURE",
+                  stabilityTime: 0,
+                  temperatureData: { temperature: 0 },
+                  alcoholData: { alcoholLevel: "Не определено" },
+                  secondsLeft: 15,
+                  faceIdVerified: false,
+                  errorMessage: "",
+              };
     });
 
     const refs = useRef({
@@ -82,7 +84,7 @@ export const useHealthCheck = (): HealthCheckState & {
         isSubmitting: false,
     }).current;
 
-    // **Update State and Persist it to localStorage**
+    // Update state and persist
     const updateState = useCallback(
         <K extends keyof HealthCheckState>(updates: Pick<HealthCheckState, K>) => {
             setState((prev) => {
@@ -94,38 +96,39 @@ export const useHealthCheck = (): HealthCheckState & {
         []
     );
 
-    // **Prevent Unnecessary Navigation & Reset**
+    // Handle timeout
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
         console.warn("⏳ Timeout reached");
 
-        // **Save the last state before navigating**
+        // Save the last state before navigating
         localStorage.setItem("healthCheckState", JSON.stringify(state));
 
-        // **Navigate only if NOT already in alcohol stage**
+        // Prevent navigation if already in ALCOHOL state
         if (state.currentState !== "ALCOHOL") {
             navigate("/", { replace: true });
         }
     }, [navigate, state]);
 
+    // **Fix: Reset timeout when alcohol data is received**
     const handleAlcoholTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
         console.warn("⏳ Alcohol data timeout reached");
         updateState({ errorMessage: "⏳ Ошибка: Не удалось определить уровень алкоголя." });
-        navigate("/", { replace: true });
-    }, [navigate, updateState]);
+    }, [updateState]);
 
-    const handleFaceIdTimeout = useCallback(() => {
-        if (refs.hasTimedOut) return;
-        refs.hasTimedOut = true;
-        console.warn("⏳ Face ID timeout reached");
-        updateState({ errorMessage: "⏳ Ошибка: Face ID не подтверждено." });
-        navigate("/", { replace: true });
-    }, [navigate, updateState]);
+    // Handle Face ID timeout
+    // const handleFaceIdTimeout = useCallback(() => {
+    //     if (refs.hasTimedOut) return;
+    //     refs.hasTimedOut = true;
+    //     console.warn("⏳ Face ID timeout reached");
+    //     updateState({ errorMessage: "⏳ Ошибка: Face ID не подтверждено." });
+    //     navigate("/", { replace: true });
+    // }, [navigate, updateState]);
 
-    // **Handle incoming WebSocket data**
+    // Handle incoming WebSocket data
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             if (!data) return;
@@ -133,7 +136,7 @@ export const useHealthCheck = (): HealthCheckState & {
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-            let alcoholStatus = "Не определено";
+            let alcoholStatus = state.alcoholData.alcoholLevel;
             if (data.alcoholLevel !== undefined) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
                 clearTimeout(refs.alcoholTimeout!);
@@ -146,34 +149,35 @@ export const useHealthCheck = (): HealthCheckState & {
             }
 
             setState((prev) => {
-                const isTemperatureStable = prev.currentState === "TEMPERATURE" && prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
+                const isTemperatureStable =
+                    prev.currentState === "TEMPERATURE" &&
+                    prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
                 const nextState = isTemperatureStable ? "ALCOHOL" : prev.currentState;
 
+                // **Fix: Reset timeout only if state changes to ALCOHOL**
                 if (nextState === "ALCOHOL" && prev.currentState !== "ALCOHOL") {
+                    clearTimeout(refs.alcoholTimeout!);
                     refs.alcoholTimeout = setTimeout(handleAlcoholTimeout, ALCOHOL_TIMEOUT);
                 }
 
-                if (!state.faceIdVerified) {
-                    refs.faceIdTimeout = setTimeout(handleFaceIdTimeout, FACEID_TIMEOUT);
-                }
-
-                const newState = {
+                return {
                     ...prev,
-                    stabilityTime: isTemperatureStable ? 0 : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
-                    temperatureData: prev.currentState === "TEMPERATURE" ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 } : prev.temperatureData,
-                    alcoholData: prev.currentState === "ALCOHOL" ? { alcoholLevel: alcoholStatus } : prev.alcoholData,
+                    stabilityTime: isTemperatureStable ? 0 : prev.stabilityTime + 1,
+                    temperatureData:
+                        prev.currentState === "TEMPERATURE"
+                            ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 }
+                            : prev.temperatureData,
+                    alcoholData: prev.currentState === "ALCOHOL"
+                        ? { alcoholLevel: alcoholStatus }
+                        : prev.alcoholData,
                     faceIdVerified: isFaceIdVerified,
                     currentState: nextState,
                 };
-
-                localStorage.setItem("healthCheckState", JSON.stringify(newState));
-                return newState;
             });
         },
-        [handleTimeout, handleAlcoholTimeout, handleFaceIdTimeout, state.faceIdVerified]
+        [handleTimeout, handleAlcoholTimeout, state]
     );
 
-    // **WebSocket Initialization**
     useEffect(() => {
         if (!refs.socket) {
             refs.socket = io(import.meta.env.VITE_SERVER_URL, {
@@ -190,7 +194,7 @@ export const useHealthCheck = (): HealthCheckState & {
         });
     }, [state.currentState, handleTimeout, handleDataEvent]);
 
-    // **Handle completion and reset state**
+    // Handle completion
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || state.currentState !== "ALCOHOL" || !state.faceIdVerified) return;
         refs.isSubmitting = true;
@@ -217,11 +221,15 @@ export const useHealthCheck = (): HealthCheckState & {
             console.error("Submission error:", error);
             refs.isSubmitting = false;
         }
-    }, [state, navigate, refs]);
+    }, [state, navigate]);
 
     return {
         ...state,
         handleComplete,
-        setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
+        setCurrentState: (newState) =>
+            updateState({
+                currentState:
+                    typeof newState === "function" ? newState(state.currentState) : newState,
+            }),
     };
 };
