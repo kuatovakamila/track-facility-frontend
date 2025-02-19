@@ -9,7 +9,6 @@ const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
 
-// Type definitions
 type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
@@ -114,20 +113,24 @@ export const useHealthCheck = (): HealthCheckState & {
             }
 
             // 🚀 Ensure stabilityTime updates correctly
-            setState((prev) => ({
-                ...prev,
-                stabilityTime: prev.currentState === "TEMPERATURE" 
-                    ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME) 
-                    : prev.stabilityTime,
-                temperatureData: prev.currentState === "TEMPERATURE" 
-                    ? { temperature: Number(data.temperature) || 0 } 
-                    : prev.temperatureData,
-                alcoholData: prev.currentState === "ALCOHOL"
-                    ? { alcoholLevel: alcoholStatus }
-                    : prev.alcoholData,
-            }));
+            setState((prev) => {
+                const newStabilityTime = Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME);
+                
+                if (newStabilityTime === MAX_STABILITY_TIME) {
+                    setTimeout(handleComplete, 500); // ✅ Trigger completion when stable
+                }
 
-            console.log("🔥 Updated stabilityTime:", state.stabilityTime);
+                return {
+                    ...prev,
+                    stabilityTime: newStabilityTime,
+                    temperatureData: prev.currentState === "TEMPERATURE" 
+                        ? { temperature: Number(data.temperature) || 0 } 
+                        : prev.temperatureData,
+                    alcoholData: prev.currentState === "ALCOHOL"
+                        ? { alcoholLevel: alcoholStatus }
+                        : prev.alcoholData,
+                };
+            });
         },
         [handleTimeout]
     );
