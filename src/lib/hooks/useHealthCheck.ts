@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
-import toast from "react-hot-toast";
+// import toast from "react-hot-toast";
 
 // Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
-const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
+// const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
 const PING_INTERVAL = 30000; // ✅ Ping the server every 30 seconds
 
 type SensorData = {
@@ -81,10 +81,10 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
 
-        toast.error(TIMEOUT_MESSAGE, {
-            duration: 3000,
-            style: { background: "#272727", color: "#fff", borderRadius: "8px" },
-        });
+        // toast.error(TIMEOUT_MESSAGE, {
+        //     duration: 3000,
+        //     style: { background: "#272727", color: "#fff", borderRadius: "8px" },
+        // });
         navigate("/");
     }, [navigate]);
 
