@@ -124,19 +124,22 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
             let alcoholStatus = "Не определено";
-            if (data.alcoholLevel) {
+
+            // ✅ Only process alcoholLevel if it's valid
+            if (data.alcoholLevel && (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal")) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
-            }
+                console.log("✅ Valid alcohol data received:", alcoholStatus);
 
-            setState((prev) => ({
-                ...prev,
-                stabilityTime: prev.currentState === "ALCOHOL" ? MAX_STABILITY_TIME : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
-                alcoholData: prev.currentState === "ALCOHOL" ? { alcoholLevel: alcoholStatus } : prev.alcoholData,
-                temperatureData: prev.currentState === "TEMPERATURE" ? { temperature: Number(data.temperature) || 0 } : prev.temperatureData,
-            }));
+                setState((prev) => ({
+                    ...prev,
+                    stabilityTime: MAX_STABILITY_TIME, // ✅ Instantly completes progress on valid data
+                    alcoholData: { alcoholLevel: alcoholStatus },
+                }));
 
-            if (state.currentState === "ALCOHOL") {
+                // ✅ Immediately complete authentication if valid data is received
                 setTimeout(handleComplete, 300);
+            } else {
+                console.warn("⚠️ No valid alcohol data received, progress will not increase.");
             }
         },
         [handleTimeout, navigate]
@@ -217,11 +220,12 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.socket?.disconnect();
 
             navigate("/complete-authentication", { state: { success: true } });
-			resetSession(); // ✅ Reset session after returning home
+
             setTimeout(() => {
                 console.log("⏳ Waiting 4 seconds before navigating to home...");
                 navigate("/");
-            }, 10000);
+                resetSession();
+            }, 4000);
 
         } catch (error) {
             console.error("❌ Submission error:", error);
@@ -239,4 +243,3 @@ export const useHealthCheck = (): HealthCheckState & {
             }),
     };
 };
-
