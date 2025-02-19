@@ -226,6 +226,7 @@ export const useHealthCheck = (): HealthCheckState & {
             }
 
             console.log("✅ Submission successful, navigating to complete authentication...");
+			resetSession()
 
             localStorage.setItem("results", JSON.stringify({
                 temperature: state.temperatureData.temperature,
@@ -233,7 +234,6 @@ export const useHealthCheck = (): HealthCheckState & {
             }));
 
             
-			resetSession()
 
             navigate("/complete-authentication", { state: { success: true } });
 
