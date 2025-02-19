@@ -87,14 +87,16 @@ export default function HealthCheck() {
 				</AnimatePresence>
 
 				<div className="flex flex-col items-center gap-4">
-					<LoadingCircle
-						key={currentState}
-						icon={state.icon}
-						value={displayValue ?? "loading"}
-						unit={state.unit}
-						progress={(stabilityTime / MAX_STABILITY_TIME) * 100}
-						onComplete={handleComplete}
-					/>
+				<LoadingCircle
+	key={currentState}
+	icon={state.icon}
+	value={displayValue ?? "loading"}
+	unit={state.unit}
+	progress={(stabilityTime / MAX_STABILITY_TIME) * 100}
+	onComplete={handleComplete}
+	isAlcohol={currentState === "ALCOHOL"} // ✅ Only delay for alcohol
+/>
+
 					{!displayValue && (
 						<span className="text-sm text-gray-400">
 							{`Осталось ${secondsLeft} ${

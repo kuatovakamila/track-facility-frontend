@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Icon } from "@phosphor-icons/react";
 import { LoadingSpinner } from "./LoadingSpinner";
@@ -25,6 +25,7 @@ type LoadingCircleProps = {
 	unit: string;
 	progress: number;
 	onComplete: () => void;
+	isAlcohol?: boolean; // ✅ Flag for alcohol delay
 };
 
 export const LoadingCircle = ({
@@ -33,12 +34,26 @@ export const LoadingCircle = ({
 	unit,
 	progress,
 	onComplete,
+	isAlcohol = false, // ✅ Default is false (temperature behaves normally)
 }: LoadingCircleProps) => {
+	const [finalValue, setFinalValue] = useState<string | number | null>(null);
+
+	// ✅ Only delay for alcohol, not for temperature
 	useEffect(() => {
 		if (progress >= 100) {
-			setTimeout(onComplete, 500);
+			if (isAlcohol) {
+				// ✅ Delay only for alcohol results
+				setTimeout(() => {
+					setFinalValue(value);
+					onComplete();
+				}, 1000); // 1-second delay for alcohol
+			} else {
+				// ✅ Show temperature immediately
+				setFinalValue(value);
+				onComplete();
+			}
 		}
-	}, [progress, onComplete]);
+	}, [progress, value, onComplete, isAlcohol]);
 
 	return (
 		<motion.div className="relative w-48 h-48 md:w-56 md:h-56">
@@ -65,16 +80,14 @@ export const LoadingCircle = ({
 					style={{ rotate: -90 }}
 				/>
 			</svg>
+
 			<div className="absolute inset-0 flex flex-col items-center justify-center">
-				<Icon
-					weight="bold"
-					className="w-10 h-10 md:w-12 md:h-12 mb-2"
-				/>
-				{typeof value === "number" ? (
+				<Icon weight="bold" className="w-10 h-10 md:w-12 md:h-12 mb-2" />
+
+				{/* ✅ Show the result only after animation completes */}
+				{finalValue !== null ? (
 					<>
-						<span className="text-3xl md:text-4xl font-bold">
-							{value}
-						</span>
+						<span className="text-3xl md:text-4xl font-bold">{finalValue}</span>
 						<span className="text-sm md:text-base">{unit}</span>
 					</>
 				) : (
