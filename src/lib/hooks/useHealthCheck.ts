@@ -2,14 +2,11 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
-import toast from "react-hot-toast";
 
 // Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 const ALCOHOL_TIMEOUT = 15000; // Timeout for alcohol state
-const TIMEOUT_MESSAGE =
-	"Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
 
 // Define sensor data types
 type SensorData = {
@@ -111,14 +108,7 @@ export const useHealthCheck = (): HealthCheckState & {
                     refs.alcoholTimeout = setTimeout(() => {
                         console.warn("⏳ Alcohol data timeout reached");
                         updateState({ errorMessage: "⏳ Ошибка: Не удалось определить уровень алкоголя." });
-						toast.error(TIMEOUT_MESSAGE, {
-							duration: 3000,
-							style: {
-								background: "#272727",
-								color: "#fff",
-								borderRadius: "8px",
-							},
-						});
+						
                         navigate("/");
                     }, ALCOHOL_TIMEOUT);
                 }
