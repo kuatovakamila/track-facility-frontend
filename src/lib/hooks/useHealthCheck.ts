@@ -5,7 +5,7 @@ import { StateKey } from "../constants";
 import toast from "react-hot-toast";
 
 // Constants
-const MAX_STABILITY_TIME = 7; // ✅ Now properly used
+const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
 const SERVER_URL = import.meta.env.VITE_SERVER_URL;
@@ -60,6 +60,7 @@ export const useHealthCheck = (): HealthCheckState & {
         setState((prev) => ({ ...prev, currentState: newState }));
     }, []);
 
+    // ✅ Ensures both temperature & alcohol data are received and stable before proceeding
     const isValidDataReceived = () => {
         return (
             state.temperatureData.temperature !== null &&
@@ -93,17 +94,17 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcoholStatus = data.alcoholLevel;
             }
 
-            // ✅ Only increase stabilityTime if valid data is received
-            const newStabilityTime = isValidDataReceived() ? Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME) : 0;
+            const newTemperature = data.temperature !== undefined ? Number(data.temperature) : state.temperatureData.temperature;
+
+            // ✅ Stability time increases only when valid data is received
+            const newStabilityTime = newTemperature !== null && alcoholStatus !== null
+                ? Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME)
+                : 0;
 
             updateState({
-                stabilityTime: newStabilityTime, // ✅ Stability time is updated
-                temperatureData: state.currentState === "TEMPERATURE" && data.temperature !== undefined
-                    ? { temperature: Number(data.temperature) }
-                    : state.temperatureData,
-                alcoholData: state.currentState === "ALCOHOL" && alcoholStatus !== null
-                    ? { alcoholLevel: alcoholStatus }
-                    : state.alcoholData,
+                stabilityTime: newStabilityTime,
+                temperatureData: state.currentState === "TEMPERATURE" ? { temperature: newTemperature } : state.temperatureData,
+                alcoholData: state.currentState === "ALCOHOL" ? { alcoholLevel: alcoholStatus } : state.alcoholData,
             });
         },
         [state.currentState, state.temperatureData, state.alcoholData, state.stabilityTime, updateState, handleTimeout]
