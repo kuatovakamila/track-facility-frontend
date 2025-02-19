@@ -133,31 +133,35 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     // WebSocket connection
-    useEffect(() => {
+      // WebSocket connection and event handling
+	  useEffect(() => {
         refs.hasTimedOut = false;
 
         if (!refs.socket || refs.socket.disconnected) {
-			refs.socket = io(import.meta.env.VITE_SERVER_URL, {
-				transports: ["websocket"],
-				reconnection: true,
-				reconnectionAttempts: 10,
-				reconnectionDelay: 5000,
-			});
-			
+            refs.socket = io(import.meta.env.VITE_SERVER_URL, {
+                transports: ["websocket"],
+                reconnection: true,
+                reconnectionAttempts: 10,
+                reconnectionDelay: 5000,
+            });
 
             refs.socket.on("connect", () => {
                 console.log("✅ WebSocket connected successfully.");
             });
 
+            refs.socket.on("alcohol", (data) => {
+                console.log("📡 Alcohol Data Received:", data);
 
-			refs.socket.on("alcohol", (data) => {
-				console.log("📡 Alcohol Data Received:", data);
-	
-				if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
-					console.log("✅ User is sober or drunk, navigating to authentication completion...");
-					navigate("/complete-authentication", { state: { success: true } });
-				}
-			});
+                if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
+                    console.log("✅ User is sober or drunk, navigating to authentication completion...");
+                    navigate("/complete-authentication", { state: { success: true } });
+                }
+            });
+
+            refs.socket.on("authentication_complete", () => {
+                console.log("✅ Received authentication_complete event, navigating...");
+                navigate("/complete-authentication", { state: { success: true } });
+            });
 
             refs.socket.on("disconnect", (reason) => {
                 console.warn("⚠️ WebSocket disconnected:", reason);
@@ -175,7 +179,6 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.socket?.disconnect();
         };
     }, [state.currentState, handleTimeout, handleDataEvent, navigate]);
-
     // Handle completion and state transitions
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
