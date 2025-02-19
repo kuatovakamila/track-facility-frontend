@@ -66,7 +66,7 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
-        hasNavigated: false,
+        hasNavigated: false, // ✅ NEW FLAG TO PREVENT RESET AFTER NAVIGATION
     }).current;
 
     const updateState = useCallback(
@@ -185,7 +185,9 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("📡 Sending final data...");
 
-            // ✅ Do NOT disconnect WebSocket until process is complete
+            // ✅ Prevent WebSocket from being reset when navigating
+            refs.hasNavigated = true;
+
             localStorage.setItem("results", JSON.stringify({
                 temperature: state.temperatureData.temperature,
                 alcohol: state.alcoholData.alcoholLevel,
@@ -202,13 +204,15 @@ export const useHealthCheck = (): HealthCheckState & {
             toast.error("Ошибка отправки данных. Проверьте соединение.");
             refs.isSubmitting = false;
         } finally {
-            // ✅ CLEANUP EVENT LISTENERS AFTER THE FULL AUTHORIZATION PROCESS
-            console.log("🛑 Cleaning up event listeners AFTER full authentication is complete...");
-            refs.socket?.off("temperature");
-            refs.socket?.off("alcohol");
-            refs.socket?.off("camera");
-            refs.socket?.disconnect();
-            refs.socket = null; // Ensure WebSocket is properly reset
+            // ✅ ONLY CLEAN UP WEBSOCKET IF NAVIGATION HAS COMPLETED
+            if (refs.hasNavigated) {
+                console.log("🛑 Cleaning up event listeners after full authentication...");
+                refs.socket?.off("temperature");
+                refs.socket?.off("alcohol");
+                refs.socket?.off("camera");
+                refs.socket?.disconnect();
+                refs.socket = null; // Ensure WebSocket is properly reset
+            }
         }
     }, [state, navigate, updateState]);
 
