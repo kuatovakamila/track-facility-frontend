@@ -6,7 +6,8 @@ import { StateKey } from "../constants";
 // Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
-const ALCOHOL_TIMEOUT = 10000; // Timeout for alcohol state
+const ALCOHOL_TIMEOUT = 10000;
+const FACEID_TIMEOUT = 20000; // Timeout for Face ID verification
 
 // Define sensor data types
 type SensorData = {
@@ -21,6 +22,7 @@ type HealthCheckState = {
     temperatureData: { temperature: number };
     alcoholData: { alcoholLevel: string };
     secondsLeft: number;
+    faceIdVerified: boolean;
     errorMessage?: string;
 };
 
@@ -36,6 +38,7 @@ const configureSocketListeners = (
     socket.off("temperature");
     socket.off("alcohol");
     socket.off("camera");
+    socket.off("faceId");
 
     console.log(`🔄 Setting up WebSocket listeners for state: ${currentState}`);
 
@@ -46,6 +49,7 @@ const configureSocketListeners = (
     }
 
     socket.on("camera", handlers.onData);
+    socket.on("faceId", handlers.onData);
 };
 
 export const useHealthCheck = (): HealthCheckState & {
@@ -54,7 +58,7 @@ export const useHealthCheck = (): HealthCheckState & {
 } => {
     const navigate = useNavigate();
 
-    // **Load state from localStorage to persist data after WebSocket reconnect**
+    // Load state from localStorage to persist progress
     const [state, setState] = useState<HealthCheckState>(() => {
         const savedState = localStorage.getItem("healthCheckState");
         return savedState ? JSON.parse(savedState) : {
@@ -63,6 +67,7 @@ export const useHealthCheck = (): HealthCheckState & {
             temperatureData: { temperature: 0 },
             alcoholData: { alcoholLevel: "Не определено" },
             secondsLeft: 15,
+            faceIdVerified: false,
             errorMessage: "",
         };
     });
@@ -71,35 +76,36 @@ export const useHealthCheck = (): HealthCheckState & {
         socket: null as Socket | null,
         timeout: null as NodeJS.Timeout | null,
         alcoholTimeout: null as NodeJS.Timeout | null,
+        faceIdTimeout: null as NodeJS.Timeout | null,
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
     }).current;
 
-    // **Update State and Persist it to localStorage**
+    // Update state and persist to localStorage
     const updateState = useCallback(
         <K extends keyof HealthCheckState>(updates: Pick<HealthCheckState, K>) => {
             setState((prev) => {
                 const newState = { ...prev, ...updates };
-                localStorage.setItem("healthCheckState", JSON.stringify(newState)); // Save state persistently
+                localStorage.setItem("healthCheckState", JSON.stringify(newState));
                 return newState;
             });
         },
         []
     );
 
-    // **Handle Timeout and Navigation Prevention**
+    // Handle WebSocket timeout for Temperature & Alcohol
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
         console.warn("⏳ Timeout reached");
 
-        // Do not reset to TEMPERATURE if we are already in ALCOHOL state
         if (state.currentState !== "ALCOHOL") {
             navigate("/");
         }
     }, [navigate, state.currentState]);
 
+    // Handle Alcohol Timeout
     const handleAlcoholTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
@@ -108,7 +114,16 @@ export const useHealthCheck = (): HealthCheckState & {
         navigate("/");
     }, [navigate, updateState]);
 
-    // **Handle Incoming Data from WebSocket**
+    // Handle Face ID Timeout Separately
+    const handleFaceIdTimeout = useCallback(() => {
+        if (refs.hasTimedOut) return;
+        refs.hasTimedOut = true;
+        console.warn("⏳ Face ID timeout reached");
+        updateState({ errorMessage: "⏳ Ошибка: Face ID не подтверждено." });
+        navigate("/");
+    }, [navigate, updateState]);
+
+    // Handle incoming WebSocket data
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             if (!data) return;
@@ -122,6 +137,12 @@ export const useHealthCheck = (): HealthCheckState & {
                 clearTimeout(refs.alcoholTimeout!);
             }
 
+            let isFaceIdVerified = state.faceIdVerified;
+            if (data.cameraStatus === "success") {
+                isFaceIdVerified = true;
+                clearTimeout(refs.faceIdTimeout!);
+            }
+
             setState((prev) => {
                 const isTemperatureStable = prev.currentState === "TEMPERATURE" && prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
                 const nextState = isTemperatureStable ? "ALCOHOL" : prev.currentState;
@@ -130,22 +151,27 @@ export const useHealthCheck = (): HealthCheckState & {
                     refs.alcoholTimeout = setTimeout(handleAlcoholTimeout, ALCOHOL_TIMEOUT);
                 }
 
+                if (!state.faceIdVerified) {
+                    refs.faceIdTimeout = setTimeout(handleFaceIdTimeout, FACEID_TIMEOUT);
+                }
+
                 const newState = {
                     ...prev,
                     stabilityTime: isTemperatureStable ? 0 : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
                     temperatureData: prev.currentState === "TEMPERATURE" ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 } : prev.temperatureData,
                     alcoholData: prev.currentState === "ALCOHOL" ? { alcoholLevel: alcoholStatus } : prev.alcoholData,
+                    faceIdVerified: isFaceIdVerified,
                     currentState: nextState,
                 };
 
-                localStorage.setItem("healthCheckState", JSON.stringify(newState)); // Persist state
+                localStorage.setItem("healthCheckState", JSON.stringify(newState));
                 return newState;
             });
         },
-        [handleTimeout, handleAlcoholTimeout]
+        [handleTimeout, handleAlcoholTimeout, handleFaceIdTimeout, state.faceIdVerified]
     );
 
-    // **Effect: WebSocket Initialization & Listeners**
+    // WebSocket Initialization
     useEffect(() => {
         if (!refs.socket) {
             refs.socket = io(import.meta.env.VITE_SERVER_URL, {
@@ -162,9 +188,9 @@ export const useHealthCheck = (): HealthCheckState & {
         });
     }, [state.currentState, handleTimeout, handleDataEvent]);
 
-    // **Handle Completion and Clear Persistent State**
+    // Handle completion and reset state
     const handleComplete = useCallback(async () => {
-        if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
+        if (refs.isSubmitting || state.currentState !== "ALCOHOL" || !state.faceIdVerified) return;
         refs.isSubmitting = true;
 
         try {
@@ -183,7 +209,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
             if (!response.ok) throw new Error("Request failed");
 
-            localStorage.removeItem("healthCheckState"); // Clear state on success
+            localStorage.removeItem("healthCheckState");
             navigate("/complete-authentication", { replace: true });
         } catch (error) {
             console.error("Submission error:", error);
