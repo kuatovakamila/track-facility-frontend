@@ -108,21 +108,26 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
             }
 
-            setState((prev) => ({
-                ...prev,
-                stabilityTime:
-                    prev.currentState === "TEMPERATURE"
-                        ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
-                        : prev.stabilityTime,
-                temperatureData:
-                    prev.currentState === "TEMPERATURE"
-                        ? { temperature: Number(data.temperature) || 0 }
-                        : prev.temperatureData,
-                alcoholData:
-                    prev.currentState === "ALCOHOL"
-                        ? { alcoholLevel: alcoholStatus }
-                        : prev.alcoholData,
-            }));
+            setState((prev) => {
+                const isTemperatureStable = prev.currentState === "TEMPERATURE" && prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
+                const nextState = isTemperatureStable ? "ALCOHOL" : prev.currentState;
+
+                console.log(`🔄 Transitioning to state: ${nextState}`);
+
+                return {
+                    ...prev,
+                    stabilityTime: isTemperatureStable ? 0 : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
+                    temperatureData:
+                        prev.currentState === "TEMPERATURE"
+                            ? { temperature: Number(data.temperature) || 0 }
+                            : prev.temperatureData,
+                    alcoholData:
+                        prev.currentState === "ALCOHOL"
+                            ? { alcoholLevel: alcoholStatus }
+                            : prev.alcoholData,
+                    currentState: nextState,
+                };
+            });
         },
         [handleTimeout]
     );
@@ -163,7 +168,7 @@ export const useHealthCheck = (): HealthCheckState & {
     }, [state.currentState, handleTimeout, handleDataEvent]);
 
     const handleComplete = useCallback(async () => {
-        if (refs.isSubmitting) return;
+        if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
         refs.isSubmitting = true;
 
         console.log("🚀 Completing health check...");
@@ -173,7 +178,7 @@ export const useHealthCheck = (): HealthCheckState & {
             console.log("⏳ Returning to home and preparing next session...");
             navigate("/");
         }, 4000);
-    }, [navigate]);
+    }, [navigate, state.currentState]);
 
     return {
         ...state,

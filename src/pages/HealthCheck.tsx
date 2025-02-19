@@ -4,6 +4,7 @@ import { LoadingCircle } from "../components/LoadingCircle";
 import { STATES } from "../lib/constants";
 import { motion, AnimatePresence } from "framer-motion";
 
+
 const containerVariants = {
 	hidden: { opacity: 0 },
 	visible: {
