@@ -20,10 +20,13 @@ export default function CompleteAuthentication() {
     // ✅ Prevent navigation until correct values are received
     useEffect(() => {
         if (results.alcohol !== "Не определено" && results.temperature !== "Не определено") {
-            console.log("✅ Correct alcohol status received:", results.alcohol);
+            console.log("✅ Correct results received, preparing to navigate...");
+
             const timer = setTimeout(() => {
+                console.log("➡️ Navigating to completion screen...");
                 navigate("/");
             }, 5000);
+
             return () => clearTimeout(timer);
         } else {
             console.warn("⚠️ Incomplete results received, waiting for update...");
