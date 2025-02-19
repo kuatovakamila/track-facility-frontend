@@ -11,9 +11,9 @@ const TIMEOUT_MESSAGE = "Не удается отследить данные, п
 
 // Type definitions
 type SensorData = {
-    temperature?: string;
+    temperature?: number;
     alcoholLevel?: string;
-    cameraStatus?: "failed" | "success";
+    cameraStatus?: 'failed' | 'success';
 };
 
 type HealthCheckState = {
@@ -25,6 +25,39 @@ type HealthCheckState = {
 };
 
 const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
+
+const configureSocketListeners = (
+    socket: Socket,
+    currentState: StateKey,
+    handlers: {
+        onData: (data: SensorData) => void;
+        onError: () => void;
+    }
+) => {
+    // Don't remove all listeners (it may delete other event listeners)
+    socket.off("connect_error");
+    socket.off("error");
+    socket.off("temperature");
+    socket.off("alcohol");
+    socket.off("camera");
+
+    socket.on("connect_error", handlers.onError);
+    socket.on("error", handlers.onError);
+
+    if (currentState === "TEMPERATURE") {
+        socket.on("temperature", handlers.onData);
+    }
+
+    if (currentState === "ALCOHOL") {
+        socket.on("alcohol", handlers.onData);
+    }
+
+    // Ensure CAMERA event is always registered
+    socket.on("camera", (data) => {
+        console.log("📡 Camera Data Received:", data);
+        handlers.onData(data);
+    });
+};
 
 export const useHealthCheck = (): HealthCheckState & {
     handleComplete: () => Promise<void>;
@@ -39,31 +72,21 @@ export const useHealthCheck = (): HealthCheckState & {
         secondsLeft: 15,
     });
 
-    // ✅ useRef для устранения устаревшего состояния
-    const currentStateRef = useRef<StateKey>(state.currentState);
-    useEffect(() => {
-        currentStateRef.current = state.currentState;
-    }, [state.currentState]);
-
-    // ✅ Исправление: Явно объявленные типы
-    const refs = useRef<{
-        socket: Socket | null;
-        timeout: NodeJS.Timeout | null;
-        lastDataTime: number;
-        hasTimedOut: boolean;
-        isSubmitting: boolean;
-    }>({
-        socket: null,
-        timeout: null,
+    const refs = useRef({
+        socket: null as Socket | null,
+        timeout: null as NodeJS.Timeout | null,
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
     }).current;
 
-    // ✅ Фикс: Типизация параметра `prev`
     const updateState = useCallback(
-        (updates: Partial<HealthCheckState>) => {
-            setState((prev: HealthCheckState) => ({ ...prev, ...updates }));
+        (updates: Partial<HealthCheckState>, callback?: () => void) => {
+            setState((prev) => {
+                const newState = { ...prev, ...updates };
+                if (callback) callback();
+                return newState;
+            });
         },
         []
     );
@@ -80,11 +103,10 @@ export const useHealthCheck = (): HealthCheckState & {
                 borderRadius: "8px",
             },
         });
-
         navigate("/");
     }, [navigate]);
 
-    // ✅ Обработчик данных с сенсоров
+    // Handle incoming data from WebSocket
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             if (!data) {
@@ -99,7 +121,17 @@ export const useHealthCheck = (): HealthCheckState & {
 
             let alcoholStatus = "Не определено";
             if (data.alcoholLevel) {
-                alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
+                console.log("📡 Raw alcohol data received:", data.alcoholLevel);
+
+                if (data.alcoholLevel === "normal") {
+                    alcoholStatus = "Трезвый";
+                    console.log("✅ User is Трезвый (Sober)!");
+                } else if (data.alcoholLevel === "abnormal") {
+                    alcoholStatus = "Пьяный";
+                    console.log("🚨 User is Пьяный (Drunk)!");
+                }
+            } else {
+                console.warn("⚠️ No alcohol data received from backend!");
             }
 
             updateState({
@@ -112,10 +144,9 @@ export const useHealthCheck = (): HealthCheckState & {
                     : state.alcoholData,
             });
         },
-        [state, updateState, handleTimeout]
+        [state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
     );
 
-    // ✅ Устранение утечек событий WebSocket
     useEffect(() => {
         if (refs.socket) return;
         refs.hasTimedOut = false;
@@ -136,46 +167,80 @@ export const useHealthCheck = (): HealthCheckState & {
             console.warn("⚠️ WebSocket disconnected:", reason);
         });
 
-        socket.removeAllListeners();
+        configureSocketListeners(socket, state.currentState, {
+            onData: (data: SensorData) => {
+                console.log("📡 Data Received:", data);
 
-        socket.on("error", handleTimeout);
-        socket.on("connect_error", handleTimeout);
-        socket.on("temperature", handleDataEvent);
-        socket.on("alcohol", handleDataEvent);
+                const { currentState, temperatureData } = state;
 
-        socket.on("camera", (data) => {
-            console.log("📡 Camera Data Received:", data);
-            
-            if (data.cameraStatus === "failed") {
-                if (currentStateRef.current !== "TEMPERATURE") {
-                    updateState({ currentState: "TEMPERATURE" });
+                if (!currentState) {
+                    console.warn("⚠️ currentState is undefined, cannot process data.");
+                    return;
                 }
 
-                toast.error("⚠️ Face ID failed. Please try again.", {
-                    duration: 3000,
-                    style: { background: "#ff4d4d", color: "#fff", borderRadius: "8px" },
-                });
+                if (currentState === "TEMPERATURE" && data.cameraStatus) {
+                    console.log("📷 Camera Event Received:", data);
 
-                return;
-            }
+                    if (data.cameraStatus === "failed") {
+                        console.warn("❌ Camera Capture Failed, retrying Face ID.");
 
-            if (data.cameraStatus === "success") {
-                if (currentStateRef.current !== "TEMPERATURE") {
-                    updateState({ currentState: "TEMPERATURE" });
-                    setTimeout(() => {
-                        navigate("/temperature-check");
-                    }, 500);
+                        // Update state to TEMPERATURE without navigating
+                        updateState({ currentState: "TEMPERATURE" });
+
+                        toast.error("⚠️ Face ID failed. Please try again.", {
+                            duration: 3000,
+                            style: { background: "#ff4d4d", color: "#fff", borderRadius: "8px" },
+                        });
+
+                        return;
+                    }
+
+                    if (data.cameraStatus === "success") {
+                        console.log("✅ Face ID recognized, moving to temperature check...");
+
+                        // Update state to TEMPERATURE and navigate after state update
+                        updateState({ currentState: "TEMPERATURE" }, () => {
+                            navigate("/temperature-check");
+                        });
+
+                        return;
+                    }
                 }
-            }
+
+                if (currentState === "TEMPERATURE" && typeof data.temperature === "number") {
+                    updateState({
+                        temperatureData: { temperature: data.temperature },
+                    });
+                }
+
+                if (currentState === "ALCOHOL" && typeof data.alcoholLevel === "string") {
+                    console.log("📡 Alcohol Level:", data.alcoholLevel);
+
+                    const alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
+
+                    const newResults = {
+                        temperature: temperatureData.temperature,
+                        alcohol: alcoholStatus,
+                    };
+
+                    localStorage.setItem("results", JSON.stringify(newResults));
+                    console.log("✅ Updated LocalStorage:", newResults);
+
+                    navigate("/complete-authentication", { state: { success: true } });
+                }
+
+                handleDataEvent(data);
+            },
+            onError: handleTimeout,
         });
 
         return () => {
             socket.disconnect();
             refs.socket = null;
         };
-    }, [handleTimeout, handleDataEvent, navigate]);
+    }, [state.currentState, handleTimeout, handleDataEvent, navigate]);
 
-    // ✅ Обработчик завершения проверки
+    // Handle completion and state transitions
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
         refs.isSubmitting = true;
