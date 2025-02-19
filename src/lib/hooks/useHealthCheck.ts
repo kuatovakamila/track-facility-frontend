@@ -232,7 +232,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcohol: state.alcoholData.alcoholLevel,
             }));
 
-            refs.socket?.disconnect();
+            
 			resetSession()
 
             navigate("/complete-authentication", { state: { success: true } });
