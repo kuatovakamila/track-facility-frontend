@@ -85,6 +85,20 @@ export const useHealthCheck = (): HealthCheckState & {
         []
     );
 
+    const resetSession = () => {
+        console.log("🔄 Resetting session...");
+        refs.hasNavigated = false;
+        refs.isSubmitting = false;
+        refs.hasTimedOut = false;
+        setState({
+            currentState: "TEMPERATURE",
+            stabilityTime: 0,
+            temperatureData: { temperature: 0 },
+            alcoholData: { alcoholLevel: "Не определено" },
+            secondsLeft: 15,
+        });
+    };
+
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut || refs.hasNavigated) return;
         refs.hasTimedOut = true;
@@ -93,6 +107,7 @@ export const useHealthCheck = (): HealthCheckState & {
             duration: 3000,
             style: { background: "#272727", color: "#fff", borderRadius: "8px" },
         });
+
         navigate("/");
     }, [navigate]);
 
@@ -128,7 +143,7 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     useEffect(() => {
-        if (refs.socket) return;
+        if (refs.socket) refs.socket.disconnect(); // ✅ Ensure WebSocket is properly reset
         refs.hasTimedOut = false;
 
         const socket = io(import.meta.env.VITE_SERVER_URL, {
@@ -201,14 +216,13 @@ export const useHealthCheck = (): HealthCheckState & {
 
             refs.socket?.disconnect();
 
-            // ✅ Navigate to complete authentication first
             navigate("/complete-authentication", { state: { success: true } });
 
-            // ✅ Wait 4 seconds, then navigate to the home screen
             setTimeout(() => {
                 console.log("⏳ Waiting 4 seconds before navigating to home...");
                 navigate("/");
-            }, 4000); // 4000ms = 4 seconds
+                resetSession(); // ✅ Reset session after returning home
+            }, 4000);
 
         } catch (error) {
             console.error("❌ Submission error:", error);
@@ -226,3 +240,4 @@ export const useHealthCheck = (): HealthCheckState & {
             }),
     };
 };
+
