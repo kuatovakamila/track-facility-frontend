@@ -148,7 +148,7 @@ export const useHealthCheck = (): HealthCheckState & {
                             transports: ["websocket"],
                             reconnection: true,
                             reconnectionAttempts: 50,
-                            reconnectionDelay: 5000,
+                            reconnectionDelay: 2000,
                         });
                     }
                 }, 2000);
