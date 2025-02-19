@@ -24,6 +24,7 @@ type HealthCheckState = {
     errorMessage?: string;
 };
 
+// WebSocket Listener Setup
 const configureSocketListeners = (
     socket: Socket,
     currentState: StateKey,
@@ -52,13 +53,18 @@ export const useHealthCheck = (): HealthCheckState & {
     setCurrentState: React.Dispatch<React.SetStateAction<StateKey>>;
 } => {
     const navigate = useNavigate();
-    const [state, setState] = useState<HealthCheckState>({
-        currentState: "TEMPERATURE",
-        stabilityTime: 0,
-        temperatureData: { temperature: 0 },
-        alcoholData: { alcoholLevel: "Не определено" },
-        secondsLeft: 15,
-        errorMessage: ""
+
+    // **Load state from localStorage to persist data after WebSocket reconnect**
+    const [state, setState] = useState<HealthCheckState>(() => {
+        const savedState = localStorage.getItem("healthCheckState");
+        return savedState ? JSON.parse(savedState) : {
+            currentState: "TEMPERATURE",
+            stabilityTime: 0,
+            temperatureData: { temperature: 0 },
+            alcoholData: { alcoholLevel: "Не определено" },
+            secondsLeft: 15,
+            errorMessage: "",
+        };
     });
 
     const refs = useRef({
@@ -70,17 +76,25 @@ export const useHealthCheck = (): HealthCheckState & {
         isSubmitting: false,
     }).current;
 
+    // **Update State and Persist it to localStorage**
     const updateState = useCallback(
         <K extends keyof HealthCheckState>(updates: Pick<HealthCheckState, K>) => {
-            setState((prev) => ({ ...prev, ...updates }));
+            setState((prev) => {
+                const newState = { ...prev, ...updates };
+                localStorage.setItem("healthCheckState", JSON.stringify(newState)); // Save state persistently
+                return newState;
+            });
         },
         []
     );
 
+    // **Handle Timeout and Navigation Prevention**
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
         console.warn("⏳ Timeout reached");
+
+        // Do not reset to TEMPERATURE if we are already in ALCOHOL state
         if (state.currentState !== "ALCOHOL") {
             navigate("/");
         }
@@ -94,6 +108,7 @@ export const useHealthCheck = (): HealthCheckState & {
         navigate("/");
     }, [navigate, updateState]);
 
+    // **Handle Incoming Data from WebSocket**
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             if (!data) return;
@@ -104,7 +119,7 @@ export const useHealthCheck = (): HealthCheckState & {
             let alcoholStatus = "Не определено";
             if (data.alcoholLevel !== undefined) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
-                clearTimeout(refs.alcoholTimeout!); // Clear timeout when valid alcohol data is received
+                clearTimeout(refs.alcoholTimeout!);
             }
 
             setState((prev) => {
@@ -115,18 +130,22 @@ export const useHealthCheck = (): HealthCheckState & {
                     refs.alcoholTimeout = setTimeout(handleAlcoholTimeout, ALCOHOL_TIMEOUT);
                 }
 
-                return {
+                const newState = {
                     ...prev,
                     stabilityTime: isTemperatureStable ? 0 : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
                     temperatureData: prev.currentState === "TEMPERATURE" ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 } : prev.temperatureData,
                     alcoholData: prev.currentState === "ALCOHOL" ? { alcoholLevel: alcoholStatus } : prev.alcoholData,
                     currentState: nextState,
                 };
+
+                localStorage.setItem("healthCheckState", JSON.stringify(newState)); // Persist state
+                return newState;
             });
         },
         [handleTimeout, handleAlcoholTimeout]
     );
 
+    // **Effect: WebSocket Initialization & Listeners**
     useEffect(() => {
         if (!refs.socket) {
             refs.socket = io(import.meta.env.VITE_SERVER_URL, {
@@ -136,12 +155,14 @@ export const useHealthCheck = (): HealthCheckState & {
                 reconnectionDelay: 1000,
             });
         }
+
         configureSocketListeners(refs.socket, state.currentState, {
             onData: handleDataEvent,
             onError: handleTimeout,
         });
     }, [state.currentState, handleTimeout, handleDataEvent]);
 
+    // **Handle Completion and Clear Persistent State**
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
         refs.isSubmitting = true;
@@ -162,6 +183,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
             if (!response.ok) throw new Error("Request failed");
 
+            localStorage.removeItem("healthCheckState"); // Clear state on success
             navigate("/complete-authentication", { replace: true });
         } catch (error) {
             console.error("Submission error:", error);
