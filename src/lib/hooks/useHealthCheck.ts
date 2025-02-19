@@ -33,7 +33,6 @@ const configureSocketListeners = (
         onError: () => void;
     }
 ) => {
-    // ✅ Remove previous listeners before adding new ones
     socket.off("temperature");
     socket.off("alcohol");
     socket.off("camera");
@@ -50,6 +49,7 @@ const configureSocketListeners = (
 export const useHealthCheck = (): HealthCheckState & {
     handleComplete: () => Promise<void>;
     setCurrentState: React.Dispatch<React.SetStateAction<StateKey>>;
+    reconnectSocket: () => void;
 } => {
     const navigate = useNavigate();
     const [state, setState] = useState<HealthCheckState>({
@@ -88,7 +88,7 @@ export const useHealthCheck = (): HealthCheckState & {
         });
 
         console.warn("⚠️ Timeout detected, but keeping WebSocket alive...");
-        refs.socket?.emit("retry"); // Request new data instead of disconnecting
+        refs.socket?.emit("retry");
 
         setTimeout(() => {
             if (!refs.hasNavigated) {
@@ -136,38 +136,51 @@ export const useHealthCheck = (): HealthCheckState & {
         [handleTimeout]
     );
 
-    // ✅ Maintain persistent WebSocket connection
-    useEffect(() => {
-        if (!refs.socket) {
-            refs.socket = io(import.meta.env.VITE_SERVER_URL, {
-                transports: ["websocket"],
-                reconnection: true,
-                reconnectionAttempts: 50,
-                reconnectionDelay: 5000,
-            });
+    // ✅ WebSocket Connection (Reconnection for FaceID)
+    const reconnectSocket = useCallback(() => {
+        if (refs.socket) return; // Prevent multiple connections
 
-            refs.socket.on("connect", () => {
-                console.log("✅ WebSocket connected.");
-            });
+        refs.socket = io(import.meta.env.VITE_SERVER_URL, {
+            transports: ["websocket"],
+            reconnection: true,
+            reconnectionAttempts: 50,
+            reconnectionDelay: 5000,
+        });
 
-            refs.socket.on("disconnect", (reason) => {
-                console.warn("⚠️ WebSocket disconnected:", reason);
-                if (!refs.hasNavigated) {
-                    console.log("🔄 Attempting to reconnect...");
-                    refs.socket?.connect();
-                }
-            });
-        }
+        refs.socket.on("connect", () => {
+            console.log("✅ WebSocket connected.");
+        });
+
+        refs.socket.on("disconnect", (reason) => {
+            console.warn("⚠️ WebSocket disconnected:", reason);
+            if (!refs.hasNavigated) {
+                console.log("🔄 Attempting to reconnect...");
+                refs.socket?.connect();
+            }
+        });
 
         configureSocketListeners(refs.socket, state.currentState, {
             onData: handleDataEvent,
             onError: handleTimeout,
         });
+    }, [handleTimeout, handleDataEvent]);
 
+    // ✅ Disconnect WebSocket after authentication
+    const disconnectSocket = useCallback(() => {
+        if (refs.socket) {
+            console.log("🛑 Disconnecting WebSocket...");
+            refs.socket.disconnect();
+            refs.socket = null;
+        }
+    }, []);
+
+    // ✅ WebSocket setup (initialization)
+    useEffect(() => {
+        reconnectSocket(); // Start WebSocket connection
         return () => {
             console.log("🛑 Keeping WebSocket alive during authentication...");
         };
-    }, [state.currentState, handleTimeout, handleDataEvent]);
+    }, [reconnectSocket]);
 
     // ✅ Handle authentication completion
     const handleComplete = useCallback(async () => {
@@ -208,6 +221,7 @@ export const useHealthCheck = (): HealthCheckState & {
             navigate("/complete-authentication", { state: { success: true } });
 
             setTimeout(() => {
+                disconnectSocket(); // Disconnect WebSocket after authentication
                 navigate("/");
                 setTimeout(() => {
                     updateState({
@@ -224,8 +238,16 @@ export const useHealthCheck = (): HealthCheckState & {
             toast.error("Ошибка отправки данных. Проверьте соединение.");
             refs.isSubmitting = false;
         }
-    }, [state, navigate, updateState]);
+    }, [state, navigate, updateState, disconnectSocket]);
 
-    return { ...state, handleComplete, setCurrentState: (newState) =>
-		updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }), };
+    return { 
+        ...state, 
+        handleComplete, 
+		setCurrentState: (newState) =>
+            updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
+        reconnectSocket // Manually call this when FaceID starts 
+    };
 };
+
+// setCurrentState: (newState) =>
+//updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
