@@ -8,7 +8,9 @@ import toast from "react-hot-toast";
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
+const ALCOHOL_WAIT_MESSAGE = "Ожидание данных об уровне алкоголя...";
 
+// Types
 type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
@@ -77,7 +79,7 @@ export const useHealthCheck = (): HealthCheckState & {
         []
     );
 
-    // ✅ Handle timeout with retry logic
+    // ✅ Timeout handler with retry logic
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
@@ -96,7 +98,7 @@ export const useHealthCheck = (): HealthCheckState & {
         }, 5000);
     }, [navigate]);
 
-    // ✅ Handle incoming sensor data
+    // ✅ Handle incoming sensor data (prevents progress until valid alcohol data)
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             if (!data) {
@@ -109,32 +111,36 @@ export const useHealthCheck = (): HealthCheckState & {
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-            let alcoholStatus = "Не определено";
-            if (data.alcoholLevel) {
-                alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
-            }
-
             setState((prev) => {
                 const isAlcoholStage = prev.currentState === "ALCOHOL";
                 const isTemperatureStage = prev.currentState === "TEMPERATURE";
+
+                let newAlcoholLevel = prev.alcoholData.alcoholLevel;
+                if (data.alcoholLevel) {
+                    newAlcoholLevel = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
+                }
 
                 const newState = {
                     ...prev,
                     stabilityTime: isTemperatureStage
                         ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
-                        : MAX_STABILITY_TIME, // ✅ Ensure stability reaches max in Alcohol stage
+                        : prev.stabilityTime, // ✅ Stability should not increase if alcohol data is missing
                     temperatureData: isTemperatureStage
                         ? { temperature: Number(data.temperature) || 0 }
                         : prev.temperatureData,
-                    alcoholData: isAlcoholStage
-                        ? { alcoholLevel: alcoholStatus }
+                    alcoholData: isAlcoholStage && data.alcoholLevel
+                        ? { alcoholLevel: newAlcoholLevel }
                         : prev.alcoholData,
                 };
 
-                // ✅ Automatically trigger authentication completion if alcohol data received
-                if (isAlcoholStage) {
+                // ✅ Ensure alcohol progress does not start unless alcohol level is received
+                if (isAlcoholStage && data.alcoholLevel) {
                     console.log("✅ Alcohol data received, triggering completion...");
+                    newState.stabilityTime = MAX_STABILITY_TIME; // Mark stability as complete
                     setTimeout(handleComplete, 300);
+                } else if (isAlcoholStage && !data.alcoholLevel) {
+                    console.warn("⚠️ Waiting for valid alcohol data...");
+                    toast.loading(ALCOHOL_WAIT_MESSAGE, { duration: 3000 });
                 }
 
                 return newState;
@@ -207,13 +213,6 @@ export const useHealthCheck = (): HealthCheckState & {
         }
 
         try {
-            const faceId = localStorage.getItem("faceId");
-            if (!faceId) {
-                console.warn("⚠️ Face ID not found, retrying...");
-                refs.socket?.emit("faceId_retry");
-                return;
-            }
-
             console.log("📡 Sending final data...");
 
             refs.hasNavigated = true;
@@ -250,7 +249,7 @@ export const useHealthCheck = (): HealthCheckState & {
         ...state, 
         handleComplete, 
 		setCurrentState: (newState) =>
-		updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
+	    updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
         reconnectSocket 
     };
 };
