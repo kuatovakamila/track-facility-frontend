@@ -173,63 +173,68 @@ export const useHealthCheck = (): HealthCheckState & {
         };
     }, [state.currentState, handleTimeout, handleDataEvent, navigate]);
 
-    const handleComplete = useCallback(async () => {
-        if (refs.isSubmitting) return;
-        refs.isSubmitting = true;
-
-        console.log("🚀 Checking state sequence...");
-
-        const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
-        if (currentIndex < STATE_SEQUENCE.length - 1) {
-            updateState({
-                currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0,
-            });
-
-            refs.isSubmitting = false;
-            return;
-        }
-
-        try {
-            const faceId = localStorage.getItem("faceId");
-            if (!faceId) throw new Error("❌ Face ID not found");
-
-            const finalData = {
-                temperatureData: state.temperatureData,
-                alcoholData: state.alcoholData,
-                faceId,
-            };
-
-            console.log("📡 Sending final data:", finalData);
-
-            const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/health`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(finalData),
-            });
-
-            if (!response.ok) {
-                throw new Error(`❌ Server responded with status: ${response.status}`);
-            }
-
-            console.log("✅ Submission successful, navigating to complete authentication...");
-
-            refs.socket?.disconnect();
-
-            navigate("/complete-authentication", { state: { success: true } });
-
-            setTimeout(() => {
-                console.log("⏳ Waiting 4 seconds before navigating to home...");
-                navigate("/");
-                resetSession(); // ✅ Reset session after returning home
-            }, 15000);
-
-        } catch (error) {
-            console.error("❌ Submission error:", error);
-            toast.error("Ошибка отправки данных. Проверьте соединение.");
-            refs.isSubmitting = false;
-        }
-    }, [state, navigate, updateState]);
+	const handleComplete = useCallback(async () => {
+		if (refs.isSubmitting) return;
+		refs.isSubmitting = true;
+	
+		console.log("🚀 Checking state sequence...");
+	
+		const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
+		if (currentIndex < STATE_SEQUENCE.length - 1) {
+			updateState({
+				currentState: STATE_SEQUENCE[currentIndex + 1],
+				stabilityTime: 0,
+			});
+	
+			refs.isSubmitting = false;
+			return;
+		}
+	
+		try {
+			const faceId = localStorage.getItem("faceId");
+			if (!faceId) throw new Error("❌ Face ID not found");
+	
+			const finalData = {
+				temperatureData: state.temperatureData,
+				alcoholData: state.alcoholData,
+				faceId,
+			};
+	
+			console.log("📡 Sending final data:", finalData);
+	
+			const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/health`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(finalData),
+			});
+	
+			if (!response.ok) {
+				throw new Error(`❌ Server responded with status: ${response.status}`);
+			}
+	
+			console.log("✅ Submission successful, navigating to complete authentication...");
+	
+			refs.socket?.disconnect();
+	
+			navigate("/complete-authentication", { state: { success: true } });
+	
+			// ✅ Ensure only one navigation happens after 15 seconds
+			if (!refs.hasNavigated) {
+				refs.hasNavigated = true;
+				refs.timeout = setTimeout(() => {
+					console.log("⏳ Waiting 15 seconds before navigating to home...");
+					navigate("/");
+					resetSession(); // ✅ Reset session after returning home
+				}, 15000);
+			}
+	
+		} catch (error) {
+			console.error("❌ Submission error:", error);
+			toast.error("Ошибка отправки данных. Проверьте соединение.");
+			refs.isSubmitting = false;
+		}
+	}, [state, navigate, updateState]);
+	
 
     return {
         ...state,
