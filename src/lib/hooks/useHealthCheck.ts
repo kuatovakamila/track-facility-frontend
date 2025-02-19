@@ -12,7 +12,7 @@ const TIMEOUT_MESSAGE = "Не удается отследить данные, п
 type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
-    cameraStatus?: "failed" | "success";
+    cameraStatus?: 'failed' | 'success';
 };
 
 type HealthCheckState = {
@@ -75,7 +75,7 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
-        hasNavigated: false,
+		hasNavigated:false
     }).current;
 
     const updateState = useCallback(
@@ -84,19 +84,11 @@ export const useHealthCheck = (): HealthCheckState & {
         },
         []
     );
-
-    const resetSession = () => {
+	const resetSession = () => {
         console.log("🔄 Resetting session...");
         refs.hasNavigated = false;
         refs.isSubmitting = false;
         refs.hasTimedOut = false;
-
-        if (refs.socket) {
-            console.log("❌ Closing existing WebSocket before reset...");
-            refs.socket.disconnect();
-            refs.socket = null;
-        }
-
         setState({
             currentState: "TEMPERATURE",
             stabilityTime: 0,
@@ -104,8 +96,6 @@ export const useHealthCheck = (): HealthCheckState & {
             alcoholData: { alcoholLevel: "Не определено" },
             secondsLeft: 15,
         });
-
-        console.log("✅ Session reset complete.");
     };
 
     const handleTimeout = useCallback(() => {
@@ -116,7 +106,6 @@ export const useHealthCheck = (): HealthCheckState & {
             duration: 3000,
             style: { background: "#272727", color: "#fff", borderRadius: "8px" },
         });
-
         navigate("/");
     }, [navigate]);
 
@@ -142,24 +131,23 @@ export const useHealthCheck = (): HealthCheckState & {
                     console.log("✅ Alcohol data received, instantly completing progress.");
                     return {
                         ...prev,
-                        stabilityTime: MAX_STABILITY_TIME,
+                        stabilityTime: MAX_STABILITY_TIME, // ✅ Instantly set progress to max
                         alcoholData: { alcoholLevel: alcoholStatus },
                     };
                 }
 
                 return {
                     ...prev,
-                    stabilityTime:
-                        prev.currentState === "TEMPERATURE"
-                            ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
-                            : prev.stabilityTime,
-                    temperatureData:
-                        prev.currentState === "TEMPERATURE"
-                            ? { temperature: Number(data.temperature) || 0 }
-                            : prev.temperatureData,
+                    stabilityTime: prev.currentState === "TEMPERATURE"
+                        ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
+                        : prev.stabilityTime,
+                    temperatureData: prev.currentState === "TEMPERATURE"
+                        ? { temperature: Number(data.temperature) || 0 }
+                        : prev.temperatureData,
                 };
             });
 
+            // 🚀 Immediately trigger handleComplete when alcohol data is received
             if (state.currentState === "ALCOHOL") {
                 setTimeout(handleComplete, 300);
             }
@@ -192,8 +180,6 @@ export const useHealthCheck = (): HealthCheckState & {
             onError: handleTimeout,
         });
 
-        refs.socket = socket;
-
         return () => {
             socket.disconnect();
             refs.socket = null;
@@ -210,7 +196,7 @@ export const useHealthCheck = (): HealthCheckState & {
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0,
+                stabilityTime: 0, // ✅ Reset stability time
             });
 
             refs.isSubmitting = false;
@@ -246,17 +232,16 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcohol: state.alcoholData.alcoholLevel,
             }));
 
-            resetSession();
+            
+			resetSession()
 
-            if (!refs.hasNavigated) {
-                refs.hasNavigated = true;
-                navigate("/complete-authentication", { state: { success: true } });
+            navigate("/complete-authentication", { state: { success: true } });
 
-                setTimeout(() => {
-                    console.log("⏳ Waiting 4 seconds before navigating to home...");
-                    navigate("/");
-                }, 10000);
-            }
+			setTimeout(() => {
+                console.log("⏳ Waiting 4 seconds before navigating to home...");
+                navigate("/");
+               
+            }, 4000);
 
         } catch (error) {
             console.error("❌ Submission error:", error);
@@ -265,7 +250,7 @@ export const useHealthCheck = (): HealthCheckState & {
         }
     }, [state, navigate, updateState]);
 
-	return {
+    return {
         ...state,
         handleComplete,
         setCurrentState: (newState: React.SetStateAction<StateKey>) =>
