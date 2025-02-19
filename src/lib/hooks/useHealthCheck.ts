@@ -33,27 +33,18 @@ const configureSocketListeners = (
         onError: () => void;
     }
 ) => {
-    socket.off("connect_error");
-    socket.off("error");
+    // ✅ REMOVE ALL PREVIOUS LISTENERS TO AVOID DUPLICATES
     socket.off("temperature");
     socket.off("alcohol");
     socket.off("camera");
 
-    socket.on("connect_error", handlers.onError);
-    socket.on("error", handlers.onError);
-
     if (currentState === "TEMPERATURE") {
         socket.on("temperature", handlers.onData);
-    }
-
-    if (currentState === "ALCOHOL") {
+    } else if (currentState === "ALCOHOL") {
         socket.on("alcohol", handlers.onData);
     }
 
-    socket.on("camera", (data) => {
-        console.log("📡 Camera Data Received:", data);
-        handlers.onData(data);
-    });
+    socket.on("camera", handlers.onData);
 };
 
 export const useHealthCheck = (): HealthCheckState & {
@@ -85,19 +76,19 @@ export const useHealthCheck = (): HealthCheckState & {
         []
     );
 
-    const resetSession = () => {
-        console.log("🔄 Resetting session...");
-        refs.hasNavigated = false;
-        refs.isSubmitting = false;
-        refs.hasTimedOut = false;
-        setState({
-            currentState: "TEMPERATURE",
-            stabilityTime: 0,
-            temperatureData: { temperature: 0 },
-            alcoholData: { alcoholLevel: "Не определено" },
-            secondsLeft: 15,
-        });
-    };
+    // const resetSession = () => {
+    //     console.log("🔄 Resetting session...");
+    //     refs.hasNavigated = false;
+    //     refs.isSubmitting = false;
+    //     refs.hasTimedOut = false;
+    //     setState({
+    //         currentState: "TEMPERATURE",
+    //         stabilityTime: 0,
+    //         temperatureData: { temperature: 0 },
+    //         alcoholData: { alcoholLevel: "Не определено" },
+    //         secondsLeft: 15,
+    //     });
+    // };
 
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
@@ -117,7 +108,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 return;
             }
 
-            console.log("📡 Full sensor data received:", data);
+            console.log("📡 Sensor data received:", data);
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
@@ -129,7 +120,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
             setState((prev) => {
                 if (prev.currentState === "ALCOHOL") {
-                    console.log("✅ Alcohol data received, instantly completing progress.");
+                    console.log("✅ Alcohol data received, completing progress.");
                     return {
                         ...prev,
                         stabilityTime: MAX_STABILITY_TIME,
@@ -156,60 +147,37 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     useEffect(() => {
-        if (refs.socket) return;
+        if (!refs.socket) {
+            refs.socket = io(import.meta.env.VITE_SERVER_URL, {
+                transports: ["websocket"],
+                reconnection: true,
+                reconnectionAttempts: 20,
+                reconnectionDelay: 10000,
+            });
 
-        const socket = io(import.meta.env.VITE_SERVER_URL, {
-            transports: ["websocket"],
-            reconnection: true,
-            reconnectionAttempts: 20,
-            reconnectionDelay: 10000,
-        });
+            refs.socket.on("connect", () => {
+                console.log("✅ WebSocket connected.");
+            });
 
-        socket.on("connect", () => {
-            console.log("✅ WebSocket connected successfully.");
-            refs.socket = socket;
-        });
+            refs.socket.on("disconnect", (reason) => {
+                console.warn("⚠️ WebSocket disconnected:", reason);
+                refs.socket = null;
+            });
+        }
 
-        socket.on("disconnect", (reason) => {
-            console.warn("⚠️ WebSocket disconnected:", reason);
-            refs.socket = null;
-
-            if (state.currentState === "TEMPERATURE") {
-                console.log("🔄 Restarting session due to WebSocket disconnect...");
-                resetSession();
-            }
-
-            setTimeout(() => {
-                if (!refs.socket) {
-                    console.log("🔄 Attempting to reconnect...");
-                    refs.socket = io(import.meta.env.VITE_SERVER_URL, {
-                        transports: ["websocket"],
-                        reconnection: true,
-                        reconnectionAttempts: 20,
-                        reconnectionDelay: 5000,
-                    });
-
-                    configureSocketListeners(refs.socket, state.currentState, {
-                        onData: handleDataEvent,
-                        onError: handleTimeout,
-                    });
-                }
-            }, 3000);
-        });
-
-        configureSocketListeners(socket, state.currentState, {
+        // ✅ REMOVE PREVIOUS LISTENERS BEFORE ADDING NEW ONES
+        configureSocketListeners(refs.socket, state.currentState, {
             onData: handleDataEvent,
             onError: handleTimeout,
         });
 
         return () => {
-            if (refs.socket) {
-                console.log("🛑 Cleaning up WebSocket...");
-                refs.socket.disconnect();
-                refs.socket = null;
-            }
+            console.log("🛑 Cleaning up event listeners...");
+            refs.socket?.off("temperature");
+            refs.socket?.off("alcohol");
+            refs.socket?.off("camera");
         };
-    }, [state.currentState, handleTimeout, handleDataEvent, navigate]);
+    }, [state.currentState, handleTimeout, handleDataEvent]);
 
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
