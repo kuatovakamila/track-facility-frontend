@@ -159,7 +159,7 @@ export const useHealthCheck = (): HealthCheckState & {
         });
 
         return () => {
-            console.log("🛑 Not cleaning up event listeners until full authentication is complete...");
+            console.log("🛑 Not cleaning up event listeners until authentication is fully done...");
         };
     }, [state.currentState, handleTimeout, handleDataEvent]);
 
@@ -187,7 +187,7 @@ export const useHealthCheck = (): HealthCheckState & {
             console.log("📡 Sending final data...");
 
             refs.hasNavigated = true;
-            refs.sessionCount += 1; // ✅ Track completed sessions
+            refs.sessionCount += 1;
 
             localStorage.setItem("results", JSON.stringify({
                 temperature: state.temperatureData.temperature,
@@ -196,12 +196,12 @@ export const useHealthCheck = (): HealthCheckState & {
 
             navigate("/complete-authentication", { state: { success: true } });
 
+            // ✅ Do NOT disconnect WebSocket until after full authentication
             setTimeout(() => {
                 console.log("⏳ Returning to home and preparing next session...");
                 navigate("/");
 
                 setTimeout(() => {
-                    // ✅ RESET STATE FOR NEXT SESSION WITHOUT DISCONNECTING SOCKET
                     console.log(`🔄 Starting new session #${refs.sessionCount + 1}`);
                     updateState({
                         currentState: "TEMPERATURE",
@@ -216,6 +216,12 @@ export const useHealthCheck = (): HealthCheckState & {
             console.error("❌ Submission error:", error);
             toast.error("Ошибка отправки данных. Проверьте соединение.");
             refs.isSubmitting = false;
+        } finally {
+            setTimeout(() => {
+                console.log("🛑 Now disconnecting WebSocket after authentication is fully completed...");
+                refs.socket?.disconnect();
+                refs.socket = null;
+            }, 5000); // ✅ Delay disconnect to avoid mid-process issues
         }
     }, [state, navigate, updateState]);
 
