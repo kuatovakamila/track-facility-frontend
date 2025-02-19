@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
-import toast from "react-hot-toast";
+// import toast from "react-hot-toast";
 
 // Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 // const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
+const PING_INTERVAL = 30000; // ✅ Ping the server every 30 seconds
 
 type SensorData = {
     temperature?: string;
@@ -22,8 +23,6 @@ type HealthCheckState = {
     alcoholData: { alcoholLevel: string };
     secondsLeft: number;
 };
-
-const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
 
 const configureSocketListeners = (
     socket: Socket,
@@ -68,6 +67,7 @@ export const useHealthCheck = (): HealthCheckState & {
         isSubmitting: false,
         hasNavigated: false,
         sessionCount: 0, // ✅ Track session count to ensure smooth transitions
+        pingInterval: null as NodeJS.Timeout | null, // ✅ Ping interval to keep connection alive
     }).current;
 
     const updateState = useCallback(
@@ -105,30 +105,21 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
             }
 
-            setState((prev) => {
-                if (prev.currentState === "ALCOHOL") {
-                    console.log("✅ Alcohol data received, completing progress.");
-                    return {
-                        ...prev,
-                        stabilityTime: MAX_STABILITY_TIME,
-                        alcoholData: { alcoholLevel: alcoholStatus },
-                    };
-                }
-
-                return {
-                    ...prev,
-                    stabilityTime: prev.currentState === "TEMPERATURE"
+            setState((prev) => ({
+                ...prev,
+                stabilityTime:
+                    prev.currentState === "TEMPERATURE"
                         ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
                         : prev.stabilityTime,
-                    temperatureData: prev.currentState === "TEMPERATURE"
+                temperatureData:
+                    prev.currentState === "TEMPERATURE"
                         ? { temperature: Number(data.temperature) || 0 }
                         : prev.temperatureData,
-                };
-            });
-
-            if (state.currentState === "ALCOHOL") {
-                setTimeout(handleComplete, 300);
-            }
+                alcoholData:
+                    prev.currentState === "ALCOHOL"
+                        ? { alcoholLevel: alcoholStatus }
+                        : prev.alcoholData,
+            }));
         },
         [handleTimeout]
     );
@@ -138,8 +129,8 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.socket = io(import.meta.env.VITE_SERVER_URL, {
                 transports: ["websocket"],
                 reconnection: true,
-                reconnectionAttempts: 20,
-                reconnectionDelay: 10000,
+                reconnectionAttempts: 50, // ✅ Increase reconnection attempts
+                reconnectionDelay: 5000,
             });
 
             refs.socket.on("connect", () => {
@@ -149,10 +140,29 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.socket.on("disconnect", (reason) => {
                 console.warn("⚠️ WebSocket disconnected:", reason);
                 refs.socket = null;
+
+                // ✅ Auto-reconnect if unexpected disconnection occurs
+                setTimeout(() => {
+                    if (!refs.socket) {
+                        refs.socket = io(import.meta.env.VITE_SERVER_URL, {
+                            transports: ["websocket"],
+                            reconnection: true,
+                            reconnectionAttempts: 50,
+                            reconnectionDelay: 5000,
+                        });
+                    }
+                }, 2000);
             });
+
+            // ✅ Keep connection alive by sending a ping every 30 seconds
+            refs.pingInterval = setInterval(() => {
+                if (refs.socket?.connected) {
+                    refs.socket.emit("ping");
+                    console.log("📡 Sent keep-alive ping to server");
+                }
+            }, PING_INTERVAL);
         }
 
-        // ✅ KEEP EVENT LISTENERS UNTIL AUTHORIZATION IS COMPLETE
         configureSocketListeners(refs.socket, state.currentState, {
             onData: handleDataEvent,
             onError: handleTimeout,
@@ -167,63 +177,14 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.isSubmitting) return;
         refs.isSubmitting = true;
 
-        console.log("🚀 Checking state sequence...");
+        console.log("🚀 Completing health check...");
+        navigate("/complete-authentication");
 
-        const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
-        if (currentIndex < STATE_SEQUENCE.length - 1) {
-            updateState({
-                currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0,
-            });
-
-            refs.isSubmitting = false;
-            return;
-        }
-
-        try {
-            const faceId = localStorage.getItem("faceId");
-            if (!faceId) throw new Error("❌ Face ID not found");
-
-            console.log("📡 Sending final data...");
-
-            refs.hasNavigated = true;
-            refs.sessionCount += 1;
-
-            localStorage.setItem("results", JSON.stringify({
-                temperature: state.temperatureData.temperature,
-                alcohol: state.alcoholData.alcoholLevel,
-            }));
-
-            navigate("/complete-authentication", { state: { success: true } });
-
-            // ✅ Do NOT disconnect WebSocket until after full authentication
-            setTimeout(() => {
-                console.log("⏳ Returning to home and preparing next session...");
-                navigate("/");
-
-                setTimeout(() => {
-                    console.log(`🔄 Starting new session #${refs.sessionCount + 1}`);
-                    updateState({
-                        currentState: "TEMPERATURE",
-                        stabilityTime: 0,
-                        temperatureData: { temperature: 0 },
-                        alcoholData: { alcoholLevel: "Не определено" },
-                        secondsLeft: 15,
-                    });
-                }, 1000);
-            }, 4000);
-        } catch (error) {
-            console.error("❌ Submission error:", error);
-            toast.error("Ошибка отправки данных. Проверьте соединение.");
-            refs.isSubmitting = false;
-        } finally {
-            setTimeout(() => {
-                console.log("🛑 Now disconnecting WebSocket after authentication is fully completed...");
-                refs.socket?.disconnect();
-                refs.socket = null;
-            }, 5000); // ✅ Delay disconnect to avoid mid-process issues
-        }
-    }, [state, navigate, updateState]);
+        setTimeout(() => {
+            console.log("⏳ Returning to home and preparing next session...");
+            navigate("/");
+        }, 4000);
+    }, [navigate]);
 
     return {
         ...state,
@@ -232,5 +193,3 @@ export const useHealthCheck = (): HealthCheckState & {
             updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
     };
 };
-// setCurrentState: (newState) =>
-//updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
