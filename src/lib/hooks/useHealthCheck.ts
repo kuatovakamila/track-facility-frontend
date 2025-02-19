@@ -2,14 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
-import toast from "react-hot-toast";
 
 // Constants
 const MAX_STABILITY_TIME = 7;
-const SOCKET_TIMEOUT = 20000;
-const ALCOHOL_TIMEOUT = 10000; // Timeout for alcohol state
-const TIMEOUT_MESSAGE =
-	"Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
+const SOCKET_TIMEOUT = 15000;
 
 // Define sensor data types
 type SensorData = {
@@ -24,7 +20,6 @@ type HealthCheckState = {
     temperatureData: { temperature: number };
     alcoholData: { alcoholLevel: string };
     secondsLeft: number;
-    errorMessage?: string;
 };
 
 const configureSocketListeners = (
@@ -39,7 +34,7 @@ const configureSocketListeners = (
     socket.off("alcohol");
     socket.off("camera");
 
-    console.log(`🔄 Setting up WebSocket listeners for state: ${currentState}`);
+    console.log(🔄 Setting up WebSocket listeners for state: ${currentState});
 
     if (currentState === "TEMPERATURE") {
         socket.on("temperature", handlers.onData);
@@ -61,13 +56,11 @@ export const useHealthCheck = (): HealthCheckState & {
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: "Не определено" },
         secondsLeft: 15,
-        errorMessage: ""
     });
 
     const refs = useRef({
         socket: null as Socket | null,
         timeout: null as NodeJS.Timeout | null,
-        alcoholTimeout: null as NodeJS.Timeout | null,
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
@@ -84,24 +77,10 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
         console.warn("⏳ Timeout reached");
-        navigate("/");
-    }, [navigate]);
-
-    const handleAlcoholTimeout = useCallback(() => {
-        if (refs.hasTimedOut) return;
-        refs.hasTimedOut = true;
-        console.warn("⏳ Alcohol data timeout reached");
-        updateState({ errorMessage: "⏳ Ошибка: Не удалось определить уровень алкоголя." });
-		toast.error(TIMEOUT_MESSAGE, {
-			duration: 3000,
-			style: {
-				background: "#272727",
-				color: "#fff",
-				borderRadius: "8px",
-			},
-		});
-        navigate("/");
-    }, [navigate, updateState]);
+        if (state.currentState === "ALCOHOL") {
+            navigate("/");
+        }
+    }, []);
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
@@ -113,16 +92,11 @@ export const useHealthCheck = (): HealthCheckState & {
             let alcoholStatus = "Не определено";
             if (data.alcoholLevel !== undefined) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
-                clearTimeout(refs.alcoholTimeout!); // Clear timeout when valid alcohol data is received
             }
 
             setState((prev) => {
                 const isTemperatureStable = prev.currentState === "TEMPERATURE" && prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
                 const nextState = isTemperatureStable ? "ALCOHOL" : prev.currentState;
-
-                if (nextState === "ALCOHOL" && prev.currentState !== "ALCOHOL") {
-                    refs.alcoholTimeout = setTimeout(handleAlcoholTimeout, ALCOHOL_TIMEOUT);
-                }
 
                 return {
                     ...prev,
@@ -133,7 +107,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 };
             });
         },
-        [handleTimeout, handleAlcoholTimeout]
+        [handleTimeout]
     );
 
     useEffect(() => {
