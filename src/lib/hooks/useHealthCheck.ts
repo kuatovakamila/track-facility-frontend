@@ -132,49 +132,47 @@ export const useHealthCheck = (): HealthCheckState & {
         [state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
     );
 
-    // WebSocket connection
-    useEffect(() => {
+	useEffect(() => {
 		if (refs.socket) return; // Prevent multiple socket instances
-        refs.hasTimedOut = false;
-
-    
-			refs.socket = io(import.meta.env.VITE_SERVER_URL, {
-				transports: ["websocket"],
-				reconnection: true,
-				reconnectionAttempts: 10,
-				reconnectionDelay: 5000,
-			});
-			
-
-            refs.socket.on("connect", () => {
-                console.log("✅ WebSocket connected successfully.");
-            });
-
-
-			refs.socket.on("alcohol", (data) => {
-				console.log("📡 Alcohol Data Received:", data);
+		refs.hasTimedOut = false;
 	
-				if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
-					console.log("✅ User is sober or drunk, navigating to authentication completion...");
-					navigate("/complete-authentication", { state: { success: true } });
-				}
-			});
-
-            refs.socket.on("disconnect", (reason) => {
-                console.warn("⚠️ WebSocket disconnected:", reason);
-            });
-
-            configureSocketListeners(refs.socket, state.currentState, {
-                onData: handleDataEvent,
-                onError: handleTimeout,
-            });
-        
-        return () => {
-            refs.socket?.off("alcohol");
-            refs.socket?.off("authentication_complete");
-            refs.socket?.disconnect();
-        };
-    }, [state.currentState, handleTimeout, handleDataEvent, navigate]);
+		const socket = io(import.meta.env.VITE_SERVER_URL, {
+			transports: ["websocket"],
+			reconnection: true,
+			reconnectionAttempts: 20,
+			reconnectionDelay: 10000,
+		});
+	
+		socket.on("connect", () => {
+			console.log("✅ WebSocket connected successfully.");
+			refs.socket = socket; // Store socket after successful connection
+		});
+	
+		socket.on("alcohol", (data) => {
+			console.log("📡 Alcohol Data Received:", data);
+			if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
+				console.log("✅ User is sober or drunk, navigating to authentication completion...");
+				navigate("/complete-authentication", { state: { success: true } });
+			}
+		});
+	
+		socket.on("disconnect", (reason) => {
+			console.warn("⚠️ WebSocket disconnected:", reason);
+		});
+	
+		configureSocketListeners(socket, state.currentState, {
+			onData: handleDataEvent,
+			onError: handleTimeout,
+		});
+	
+		return () => {
+			socket.off("alcohol");
+			socket.off("authentication_complete");
+			socket.disconnect();
+			refs.socket = null; // Clean up reference
+		};
+	}, [state.currentState, handleTimeout, handleDataEvent, navigate]);
+	
 
     // Handle completion and state transitions
     const handleComplete = useCallback(async () => {
