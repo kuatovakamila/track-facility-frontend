@@ -8,7 +8,7 @@ import toast from "react-hot-toast";
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
-const ALCOHOL_WAIT_MESSAGE = "Ожидание данных об уровне алкоголя...";
+
 
 // Types
 type SensorData = {
@@ -70,6 +70,7 @@ export const useHealthCheck = (): HealthCheckState & {
         isSubmitting: false,
         hasNavigated: false,
         sessionCount: 0,
+        alcoholDataReceived: false, // ✅ Tracks if valid alcohol data is received
     }).current;
 
     const updateState = useCallback(
@@ -135,12 +136,14 @@ export const useHealthCheck = (): HealthCheckState & {
 
                 // ✅ Ensure alcohol progress does not start unless alcohol level is received
                 if (isAlcoholStage && data.alcoholLevel) {
-                    console.log("✅ Alcohol data received, triggering completion...");
-                    newState.stabilityTime = MAX_STABILITY_TIME; // Mark stability as complete
-                    setTimeout(handleComplete, 300);
-                } else if (isAlcoholStage && !data.alcoholLevel) {
+                    if (!refs.alcoholDataReceived) {
+                        console.log("✅ Alcohol data received:", newAlcoholLevel);
+                        refs.alcoholDataReceived = true;
+                        newState.stabilityTime = MAX_STABILITY_TIME; // Mark stability as complete
+                        setTimeout(handleComplete, 300);
+                    }
+                } else if (isAlcoholStage && !data.alcoholLevel && !refs.alcoholDataReceived) {
                     console.warn("⚠️ Waiting for valid alcohol data...");
-                    toast.loading(ALCOHOL_WAIT_MESSAGE, { duration: 3000 });
                 }
 
                 return newState;
@@ -249,11 +252,10 @@ export const useHealthCheck = (): HealthCheckState & {
         ...state, 
         handleComplete, 
 		setCurrentState: (newState) =>
-	    updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
+			updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
         reconnectSocket 
     };
 };
-
 
 // setCurrentState: (newState) =>
 //updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
