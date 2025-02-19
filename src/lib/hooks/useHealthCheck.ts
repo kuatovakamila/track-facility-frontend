@@ -140,8 +140,8 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.socket = io(import.meta.env.VITE_SERVER_URL, {
                 transports: ["websocket"],
                 reconnection: true,
-                reconnectionAttempts: 60,
-                reconnectionDelay: 500,
+                reconnectionAttempts: Infinity,
+                reconnectionDelay: 1000,
             });
 
             refs.socket.on("connect", () => {
@@ -149,8 +149,7 @@ export const useHealthCheck = (): HealthCheckState & {
             });
 
             refs.socket.on("disconnect", (reason) => {
-                console.warn("⚠️ WebSocket disconnected:", reason);
-                refs.socket = null;
+                console.warn("⚠️ WebSocket disconnected, attempting to reconnect:", reason);
             });
 
             refs.pingInterval = setInterval(() => {
