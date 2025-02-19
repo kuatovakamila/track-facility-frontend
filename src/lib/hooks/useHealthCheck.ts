@@ -75,7 +75,7 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
-        hasNavigated: false,
+		hasNavigated:false
     }).current;
 
     const updateState = useCallback(
@@ -84,8 +84,7 @@ export const useHealthCheck = (): HealthCheckState & {
         },
         []
     );
-
-    const resetSession = () => {
+	const resetSession = () => {
         console.log("🔄 Resetting session...");
         refs.hasNavigated = false;
         refs.isSubmitting = false;
@@ -100,14 +99,13 @@ export const useHealthCheck = (): HealthCheckState & {
     };
 
     const handleTimeout = useCallback(() => {
-        if (refs.hasTimedOut || refs.hasNavigated) return;
+        if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
 
         toast.error(TIMEOUT_MESSAGE, {
             duration: 3000,
             style: { background: "#272727", color: "#fff", borderRadius: "8px" },
         });
-
         navigate("/");
     }, [navigate]);
 
@@ -124,29 +122,41 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
             let alcoholStatus = "Не определено";
-
-            // ✅ Only process alcoholLevel if it's valid
-            if (data.alcoholLevel && (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal")) {
+            if (data.alcoholLevel) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
-                console.log("✅ Valid alcohol data received:", alcoholStatus);
+            }
 
-                setState((prev) => ({
+            setState((prev) => {
+                if (prev.currentState === "ALCOHOL") {
+                    console.log("✅ Alcohol data received, instantly completing progress.");
+                    return {
+                        ...prev,
+                        stabilityTime: MAX_STABILITY_TIME, // ✅ Instantly set progress to max
+                        alcoholData: { alcoholLevel: alcoholStatus },
+                    };
+                }
+
+                return {
                     ...prev,
-                    stabilityTime: MAX_STABILITY_TIME, // ✅ Instantly completes progress on valid data
-                    alcoholData: { alcoholLevel: alcoholStatus },
-                }));
+                    stabilityTime: prev.currentState === "TEMPERATURE"
+                        ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
+                        : prev.stabilityTime,
+                    temperatureData: prev.currentState === "TEMPERATURE"
+                        ? { temperature: Number(data.temperature) || 0 }
+                        : prev.temperatureData,
+                };
+            });
 
-                // ✅ Immediately complete authentication if valid data is received
+            // 🚀 Immediately trigger handleComplete when alcohol data is received
+            if (state.currentState === "ALCOHOL") {
                 setTimeout(handleComplete, 300);
-            } else {
-                console.warn("⚠️ No valid alcohol data received, progress will not increase.");
             }
         },
-        [handleTimeout, navigate]
+        [handleTimeout]
     );
 
     useEffect(() => {
-        if (refs.socket) refs.socket.disconnect(); // ✅ Ensure WebSocket is properly reset
+        if (refs.socket) return;
         refs.hasTimedOut = false;
 
         const socket = io(import.meta.env.VITE_SERVER_URL, {
@@ -186,7 +196,7 @@ export const useHealthCheck = (): HealthCheckState & {
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0,
+                stabilityTime: 0, // ✅ Reset stability time
             });
 
             refs.isSubmitting = false;
@@ -217,14 +227,20 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("✅ Submission successful, navigating to complete authentication...");
 
+            localStorage.setItem("results", JSON.stringify({
+                temperature: state.temperatureData.temperature,
+                alcohol: state.alcoholData.alcoholLevel,
+            }));
+
             refs.socket?.disconnect();
+			resetSession()
 
             navigate("/complete-authentication", { state: { success: true } });
 
-            setTimeout(() => {
+			setTimeout(() => {
                 console.log("⏳ Waiting 4 seconds before navigating to home...");
                 navigate("/");
-                resetSession();
+               
             }, 4000);
 
         } catch (error) {
