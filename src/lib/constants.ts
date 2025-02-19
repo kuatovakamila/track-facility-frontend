@@ -2,7 +2,6 @@ import {
 	// Heart,
 	Thermometer,
 	Wine,
-	User
 } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
 
@@ -28,13 +27,7 @@ export const STATES = {
 		value: "Загрузка...",
 		unit: "MG",
 	},
-	FACE_ID: {
-		title: "Распознавание лица",
-		subtitle: "Посмотрите прямо в камеру",
-		icon:  User as Icon,
-		value: "Загрузка...",
-		unit: "",
-	},
+	
 	
 } as const;
 
