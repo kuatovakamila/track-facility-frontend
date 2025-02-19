@@ -6,7 +6,7 @@ import { StateKey } from "../constants";
 // Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
-const ALCOHOL_TIMEOUT = 10000;
+// const ALCOHOL_TIMEOUT = 10000;
 // const FACEID_TIMEOUT = 20000;
 
 // Define sensor data types
@@ -102,16 +102,15 @@ export const useHealthCheck = (): HealthCheckState & {
         refs.hasTimedOut = true;
         console.warn("⏳ Timeout reached");
 
-        // Save the last state before navigating
         localStorage.setItem("healthCheckState", JSON.stringify(state));
 
-        // Prevent navigation if already in ALCOHOL state
+        // ✅ Prevent navigation if already in "ALCOHOL" state
         if (state.currentState !== "ALCOHOL") {
             navigate("/", { replace: true });
         }
     }, [navigate, state]);
 
-    // **Fix: Reset timeout when alcohol data is received**
+    // ✅ Reset timeout only if state changes to "ALCOHOL"
     const handleAlcoholTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
@@ -133,19 +132,22 @@ export const useHealthCheck = (): HealthCheckState & {
         (data: SensorData) => {
             if (!data) return;
             refs.lastDataTime = Date.now();
+
+            // ✅ Clear all timeouts when new data is received
             clearTimeout(refs.timeout!);
+            clearTimeout(refs.alcoholTimeout!);
+            clearTimeout(refs.faceIdTimeout!);
+
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
             let alcoholStatus = state.alcoholData.alcoholLevel;
             if (data.alcoholLevel !== undefined) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
-                clearTimeout(refs.alcoholTimeout!);
             }
 
             let isFaceIdVerified = state.faceIdVerified;
             if (data.cameraStatus === "success") {
                 isFaceIdVerified = true;
-                clearTimeout(refs.faceIdTimeout!);
             }
 
             setState((prev) => {
@@ -153,12 +155,6 @@ export const useHealthCheck = (): HealthCheckState & {
                     prev.currentState === "TEMPERATURE" &&
                     prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
                 const nextState = isTemperatureStable ? "ALCOHOL" : prev.currentState;
-
-                // **Fix: Reset timeout only if state changes to ALCOHOL**
-                if (nextState === "ALCOHOL" && prev.currentState !== "ALCOHOL") {
-                    clearTimeout(refs.alcoholTimeout!);
-                    refs.alcoholTimeout = setTimeout(handleAlcoholTimeout, ALCOHOL_TIMEOUT);
-                }
 
                 return {
                     ...prev,
@@ -174,6 +170,9 @@ export const useHealthCheck = (): HealthCheckState & {
                     currentState: nextState,
                 };
             });
+
+            // ✅ Save updated state to localStorage
+            localStorage.setItem("healthCheckState", JSON.stringify(state));
         },
         [handleTimeout, handleAlcoholTimeout, state]
     );
