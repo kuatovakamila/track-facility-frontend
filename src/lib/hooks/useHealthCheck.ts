@@ -29,7 +29,7 @@ const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
 
 export const useHealthCheck = (): HealthCheckState & {
     handleComplete: () => Promise<void>;
-    setCurrentState: (newState: StateKey) => void; // ✅ Fix Type Here
+    setCurrentState: (newState: StateKey) => void; 
 } => {
     const navigate = useNavigate();
     const [state, setState] = useState<HealthCheckState>({
@@ -49,7 +49,6 @@ export const useHealthCheck = (): HealthCheckState & {
         isConnected: false,
     }).current;
 
-    // ✅ General State Updater
     const updateState = useCallback(
         <K extends keyof HealthCheckState>(updates: Pick<HealthCheckState, K>) => {
             setState((prev) => ({ ...prev, ...updates }));
@@ -57,12 +56,15 @@ export const useHealthCheck = (): HealthCheckState & {
         []
     );
 
-    // ✅ Fix `setCurrentState` Type Error
     const setCurrentState = useCallback((newState: StateKey) => {
         setState((prev) => ({ ...prev, currentState: newState }));
     }, []);
 
-    // ✅ Handle timeout to prevent infinite waiting
+    // ✅ Prevent processing if alcohol level is missing
+    const isValidAlcoholLevel = (alcoholLevel?: string) => {
+        return alcoholLevel === "normal" || alcoholLevel === "abnormal";
+    };
+
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut || refs.isSubmitting) return;
         refs.hasTimedOut = true;
@@ -75,7 +77,6 @@ export const useHealthCheck = (): HealthCheckState & {
         navigate("/");
     }, [navigate]);
 
-    // ✅ Handle WebSocket Data
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             if (!data) {
@@ -88,29 +89,14 @@ export const useHealthCheck = (): HealthCheckState & {
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-            // 🔥 Handle Camera Face ID events
-            if (data.cameraStatus) {
-                if (data.cameraStatus === "failed") {
-                    toast.error("⚠️ Face ID failed. Please try again.", {
-                        duration: 3000,
-                        style: { background: "#ff4d4d", color: "#fff", borderRadius: "8px" },
-                    });
-                    return;
-                }
-
-                if (data.cameraStatus === "success" && state.currentState === "TEMPERATURE") {
-                    console.log("✅ Face ID recognized, moving to temperature check...");
-                    setCurrentState("TEMPERATURE");
-
-                    setTimeout(() => {
-                        navigate("/temperature-check");
-                    }, 500);
-                }
+            if (state.currentState === "ALCOHOL" && !isValidAlcoholLevel(data.alcoholLevel)) {
+                console.warn("⚠️ No valid alcohol data received, waiting...");
+                toast.error("⚠️ Не получены данные об уровне алкоголя, повторите попытку.");
                 return;
             }
 
             let alcoholStatus = "Не определено";
-            if (data.alcoholLevel) {
+            if (isValidAlcoholLevel(data.alcoholLevel)) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
             }
 
@@ -124,12 +110,11 @@ export const useHealthCheck = (): HealthCheckState & {
                     : state.alcoholData,
             });
         },
-        [state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout, setCurrentState]
+        [state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
     );
 
-    // ✅ WebSocket Connection Setup
     useEffect(() => {
-        if (refs.socket) return; // Prevent duplicate sockets
+        if (refs.socket) return; 
         refs.hasTimedOut = false;
 
         const socket = io(SERVER_URL, {
@@ -155,7 +140,6 @@ export const useHealthCheck = (): HealthCheckState & {
 
         socket.on("temperature", handleDataEvent);
         socket.on("alcohol", handleDataEvent);
-        socket.on("camera", handleDataEvent);
 
         return () => {
             if (refs.socket) {
@@ -166,7 +150,6 @@ export const useHealthCheck = (): HealthCheckState & {
         };
     }, [handleTimeout, handleDataEvent]);
 
-    // ✅ Handle Final Submission to Firebase
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
         refs.isSubmitting = true;
@@ -177,6 +160,13 @@ export const useHealthCheck = (): HealthCheckState & {
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             console.log("⏭️ Moving to next state:", STATE_SEQUENCE[currentIndex + 1]);
             setCurrentState(STATE_SEQUENCE[currentIndex + 1]);
+            refs.isSubmitting = false;
+            return;
+        }
+
+        if (!isValidAlcoholLevel(state.alcoholData.alcoholLevel)) {
+            toast.error("❌ Данные уровня алкоголя отсутствуют. Повторите попытку.");
+            console.warn("⚠️ Attempted to submit without valid alcohol data.");
             refs.isSubmitting = false;
             return;
         }
@@ -221,6 +211,6 @@ export const useHealthCheck = (): HealthCheckState & {
     return {
         ...state,
         handleComplete,
-        setCurrentState, // ✅ Fix Type Issue
+        setCurrentState,
     };
 };
