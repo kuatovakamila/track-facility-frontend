@@ -112,12 +112,13 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
             }
 
-            // 🚀 Ensure stabilityTime updates correctly
             setState((prev) => {
                 const newStabilityTime = Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME);
                 
+                // ✅ Force last update & trigger completion
                 if (newStabilityTime === MAX_STABILITY_TIME) {
-                    setTimeout(handleComplete, 500); // ✅ Trigger completion when stable
+                    console.log("✅ Stability time reached MAX. Completing...");
+                    setTimeout(handleComplete, 500); // Smooth transition
                 }
 
                 return {
