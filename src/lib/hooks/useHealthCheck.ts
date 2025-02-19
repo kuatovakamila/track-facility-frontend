@@ -75,6 +75,7 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
+        hasNavigated: false, // ✅ Prevents multiple navigations
     }).current;
 
     const updateState = useCallback(
@@ -85,7 +86,7 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     const handleTimeout = useCallback(() => {
-        if (refs.hasTimedOut) return;
+        if (refs.hasTimedOut || refs.hasNavigated) return; // ✅ Prevent multiple navigations
         refs.hasTimedOut = true;
 
         toast.error(TIMEOUT_MESSAGE, {
@@ -114,10 +115,10 @@ export const useHealthCheck = (): HealthCheckState & {
 
             setState((prev) => {
                 if (prev.currentState === "ALCOHOL") {
-                    console.log("✅ Alcohol data received, instantly completing progress.");
+                    console.log("✅ Alcohol data received, completing progress.");
                     return {
                         ...prev,
-                        stabilityTime: MAX_STABILITY_TIME, // ✅ Instantly set progress to max
+                        stabilityTime: MAX_STABILITY_TIME, 
                         alcoholData: { alcoholLevel: alcoholStatus },
                     };
                 }
@@ -133,12 +134,18 @@ export const useHealthCheck = (): HealthCheckState & {
                 };
             });
 
-            // 🚀 Immediately trigger handleComplete when alcohol data is received
+            // ✅ Navigate to temperature check only once
+            if (state.currentState === "TEMPERATURE" && !refs.hasNavigated) {
+                refs.hasNavigated = true;
+                setTimeout(() => navigate("/temperature-check"), 500);
+            }
+
+            // ✅ Immediately trigger handleComplete when alcohol data is received
             if (state.currentState === "ALCOHOL") {
                 setTimeout(handleComplete, 300);
             }
         },
-        [handleTimeout]
+        [handleTimeout, navigate]
     );
 
     useEffect(() => {
@@ -182,7 +189,7 @@ export const useHealthCheck = (): HealthCheckState & {
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0, // ✅ Reset stability time
+                stabilityTime: 0, 
             });
 
             refs.isSubmitting = false;
@@ -212,11 +219,6 @@ export const useHealthCheck = (): HealthCheckState & {
             }
 
             console.log("✅ Submission successful, navigating to complete authentication...");
-
-            localStorage.setItem("results", JSON.stringify({
-                temperature: state.temperatureData.temperature,
-                alcohol: state.alcoholData.alcoholLevel,
-            }));
 
             refs.socket?.disconnect();
 
