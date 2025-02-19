@@ -134,6 +134,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
     // WebSocket connection
     useEffect(() => {
+		if (refs.socket) return; // Prevent multiple socket instances
         refs.hasTimedOut = false;
 
     
