@@ -25,7 +25,6 @@ type HealthCheckState = {
 
 const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
 
-// Configure socket listeners for each state
 const configureSocketListeners = (
     socket: Socket,
     currentState: StateKey,
@@ -34,19 +33,31 @@ const configureSocketListeners = (
         onError: () => void;
     }
 ) => {
-    socket.removeAllListeners();
+    // Don't remove all listeners (it may delete other event listeners)
+    socket.off("connect_error");
+    socket.off("error");
+    socket.off("temperature");
+    socket.off("alcohol");
+    socket.off("camera");
+
     socket.on("connect_error", handlers.onError);
     socket.on("error", handlers.onError);
 
-    switch (currentState) {
-        case "TEMPERATURE":
-            socket.on("temperature", handlers.onData);
-            break;
-        case "ALCOHOL":
-            socket.on("alcohol", handlers.onData);
-            break;
+    if (currentState === "TEMPERATURE") {
+        socket.on("temperature", handlers.onData);
     }
+
+    if (currentState === "ALCOHOL") {
+        socket.on("alcohol", handlers.onData);
+    }
+
+    // 🔥 Ensure CAMERA event is always registered
+    socket.on("camera", (data) => {
+        console.log("📡 Camera Data Received:", data);
+        handlers.onData(data);
+    });
 };
+
 
 export const useHealthCheck = (): HealthCheckState & {
     handleComplete: () => Promise<void>;
