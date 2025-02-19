@@ -29,7 +29,7 @@ const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
 
 export const useHealthCheck = (): HealthCheckState & {
     handleComplete: () => Promise<void>;
-    setCurrentState: React.Dispatch<React.SetStateAction<StateKey>>;
+    setCurrentState: (newState: StateKey) => void; // ✅ Fix Type Here
 } => {
     const navigate = useNavigate();
     const [state, setState] = useState<HealthCheckState>({
@@ -49,13 +49,18 @@ export const useHealthCheck = (): HealthCheckState & {
         isConnected: false,
     }).current;
 
-    // ✅ Update state safely
+    // ✅ General State Updater
     const updateState = useCallback(
         <K extends keyof HealthCheckState>(updates: Pick<HealthCheckState, K>) => {
             setState((prev) => ({ ...prev, ...updates }));
         },
         []
     );
+
+    // ✅ Fix `setCurrentState` Type Error
+    const setCurrentState = useCallback((newState: StateKey) => {
+        setState((prev) => ({ ...prev, currentState: newState }));
+    }, []);
 
     // ✅ Handle timeout to prevent infinite waiting
     const handleTimeout = useCallback(() => {
@@ -69,26 +74,6 @@ export const useHealthCheck = (): HealthCheckState & {
 
         navigate("/");
     }, [navigate]);
-
-    // ✅ Handle Camera Face ID Status
-    const handleCameraStatus = useCallback((data: SensorData) => {
-        if (data.cameraStatus === "failed") {
-            toast.error("⚠️ Face ID failed. Please try again.", {
-                duration: 3000,
-                style: { background: "#ff4d4d", color: "#fff", borderRadius: "8px" },
-            });
-            return;
-        }
-
-        if (data.cameraStatus === "success" && state.currentState === "TEMPERATURE") {
-            console.log("✅ Face ID recognized, moving to temperature check...");
-            updateState({ currentState: "TEMPERATURE" });
-
-            setTimeout(() => {
-                navigate("/temperature-check");
-            }, 500);
-        }
-    }, [navigate, updateState, state.currentState]);
 
     // ✅ Handle WebSocket Data
     const handleDataEvent = useCallback(
@@ -105,7 +90,22 @@ export const useHealthCheck = (): HealthCheckState & {
 
             // 🔥 Handle Camera Face ID events
             if (data.cameraStatus) {
-                handleCameraStatus(data);
+                if (data.cameraStatus === "failed") {
+                    toast.error("⚠️ Face ID failed. Please try again.", {
+                        duration: 3000,
+                        style: { background: "#ff4d4d", color: "#fff", borderRadius: "8px" },
+                    });
+                    return;
+                }
+
+                if (data.cameraStatus === "success" && state.currentState === "TEMPERATURE") {
+                    console.log("✅ Face ID recognized, moving to temperature check...");
+                    setCurrentState("TEMPERATURE");
+
+                    setTimeout(() => {
+                        navigate("/temperature-check");
+                    }, 500);
+                }
                 return;
             }
 
@@ -124,10 +124,10 @@ export const useHealthCheck = (): HealthCheckState & {
                     : state.alcoholData,
             });
         },
-        [state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout, handleCameraStatus]
+        [state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout, setCurrentState]
     );
 
-    // ✅ WebSocket Connection Setup with Fixes
+    // ✅ WebSocket Connection Setup
     useEffect(() => {
         if (refs.socket) return; // Prevent duplicate sockets
         refs.hasTimedOut = false;
@@ -176,18 +176,12 @@ export const useHealthCheck = (): HealthCheckState & {
 
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             console.log("⏭️ Moving to next state:", STATE_SEQUENCE[currentIndex + 1]);
-
-            updateState({
-                currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0,
-            });
-
+            setCurrentState(STATE_SEQUENCE[currentIndex + 1]);
             refs.isSubmitting = false;
             return;
         }
 
         try {
-            refs.socket?.disconnect();
             const faceId = localStorage.getItem("faceId");
             if (!faceId) throw new Error("Face ID not found");
 
@@ -204,8 +198,7 @@ export const useHealthCheck = (): HealthCheckState & {
             });
 
             if (!response.ok) {
-                const errorMsg = await response.text();
-                throw new Error(`Firebase request failed: ${errorMsg}`);
+                throw new Error(`Firebase request failed: ${await response.text()}`);
             }
 
             console.log("✅ Firebase submission successful!");
@@ -221,15 +214,13 @@ export const useHealthCheck = (): HealthCheckState & {
             toast.error("Ошибка отправки данных. Попробуйте снова.");
         } finally {
             refs.isSubmitting = false;
+            refs.socket?.disconnect();
         }
-    }, [state, navigate, updateState]);
+    }, [state, navigate, setCurrentState]);
 
     return {
         ...state,
         handleComplete,
-        setCurrentState: (newState: React.SetStateAction<StateKey>) =>
-            updateState({
-                currentState: typeof newState === "function" ? newState(state.currentState) : newState,
-            }),
+        setCurrentState, // ✅ Fix Type Issue
     };
 };
