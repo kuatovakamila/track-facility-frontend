@@ -5,7 +5,7 @@ import { StateKey } from "../constants";
 import toast from "react-hot-toast";
 
 // Constants
-const MAX_STABILITY_TIME = 7;
+const MAX_STABILITY_TIME = 7; // ✅ Now properly used
 const SOCKET_TIMEOUT = 15000;
 const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
 const SERVER_URL = import.meta.env.VITE_SERVER_URL;
@@ -20,8 +20,8 @@ type SensorData = {
 type HealthCheckState = {
     currentState: StateKey;
     stabilityTime: number;
-    temperatureData: { temperature: number };
-    alcoholData: { alcoholLevel: string };
+    temperatureData: { temperature: number | null };
+    alcoholData: { alcoholLevel: string | null };
     secondsLeft: number;
 };
 
@@ -29,14 +29,14 @@ const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
 
 export const useHealthCheck = (): HealthCheckState & {
     handleComplete: () => Promise<void>;
-    setCurrentState: (newState: StateKey) => void; 
+    setCurrentState: (newState: StateKey) => void;
 } => {
     const navigate = useNavigate();
     const [state, setState] = useState<HealthCheckState>({
         currentState: "TEMPERATURE",
         stabilityTime: 0,
-        temperatureData: { temperature: 0 },
-        alcoholData: { alcoholLevel: "Не определено" },
+        temperatureData: { temperature: null },
+        alcoholData: { alcoholLevel: null },
         secondsLeft: 15,
     });
 
@@ -60,9 +60,11 @@ export const useHealthCheck = (): HealthCheckState & {
         setState((prev) => ({ ...prev, currentState: newState }));
     }, []);
 
-    // ✅ Prevent processing if alcohol level is missing
-    const isValidAlcoholLevel = (alcoholLevel?: string) => {
-        return alcoholLevel === "normal" || alcoholLevel === "abnormal";
+    const isValidDataReceived = () => {
+        return (
+            state.temperatureData.temperature !== null &&
+            (state.alcoholData.alcoholLevel === "normal" || state.alcoholData.alcoholLevel === "abnormal")
+        );
     };
 
     const handleTimeout = useCallback(() => {
@@ -79,42 +81,36 @@ export const useHealthCheck = (): HealthCheckState & {
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
-            if (!data) {
-                console.warn("⚠️ Received empty data packet");
-                return;
-            }
+            if (!data) return;
 
             console.log("📡 Full sensor data received:", data);
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-            if (state.currentState === "ALCOHOL" && !isValidAlcoholLevel(data.alcoholLevel)) {
-                console.warn("⚠️ No valid alcohol data received, waiting...");
-                toast.error("⚠️ Не получены данные об уровне алкоголя, повторите попытку.");
-                return;
+            let alcoholStatus: string | null = state.alcoholData.alcoholLevel;
+            if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
+                alcoholStatus = data.alcoholLevel;
             }
 
-            let alcoholStatus = "Не определено";
-            if (isValidAlcoholLevel(data.alcoholLevel)) {
-                alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
-            }
+            // ✅ Only increase stabilityTime if valid data is received
+            const newStabilityTime = isValidDataReceived() ? Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME) : 0;
 
             updateState({
-                stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
-                temperatureData: state.currentState === "TEMPERATURE"
-                    ? { temperature: Number(data.temperature) || 0 }
+                stabilityTime: newStabilityTime, // ✅ Stability time is updated
+                temperatureData: state.currentState === "TEMPERATURE" && data.temperature !== undefined
+                    ? { temperature: Number(data.temperature) }
                     : state.temperatureData,
-                alcoholData: state.currentState === "ALCOHOL"
+                alcoholData: state.currentState === "ALCOHOL" && alcoholStatus !== null
                     ? { alcoholLevel: alcoholStatus }
                     : state.alcoholData,
             });
         },
-        [state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
+        [state.currentState, state.temperatureData, state.alcoholData, state.stabilityTime, updateState, handleTimeout]
     );
 
     useEffect(() => {
-        if (refs.socket) return; 
+        if (refs.socket) return;
         refs.hasTimedOut = false;
 
         const socket = io(SERVER_URL, {
@@ -154,19 +150,18 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.isSubmitting) return;
         refs.isSubmitting = true;
 
+        if (!isValidDataReceived() || state.stabilityTime < MAX_STABILITY_TIME) {
+            console.warn("⚠️ Data is not stable or fully received. Waiting...");
+            refs.isSubmitting = false;
+            return;
+        }
+
         console.log("🚀 Checking state sequence...");
         const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
 
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             console.log("⏭️ Moving to next state:", STATE_SEQUENCE[currentIndex + 1]);
             setCurrentState(STATE_SEQUENCE[currentIndex + 1]);
-            refs.isSubmitting = false;
-            return;
-        }
-
-        if (!isValidAlcoholLevel(state.alcoholData.alcoholLevel)) {
-            toast.error("❌ Данные уровня алкоголя отсутствуют. Повторите попытку.");
-            console.warn("⚠️ Attempted to submit without valid alcohol data.");
             refs.isSubmitting = false;
             return;
         }
