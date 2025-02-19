@@ -255,7 +255,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 setTimeout(() => {
                     console.log("⏳ Waiting 4 seconds before navigating to home...");
                     navigate("/");
-                }, 4000);
+                }, 10000);
             }
 
         } catch (error) {
