@@ -34,7 +34,8 @@ export default function CompleteAuthentication() {
     }, [navigate, results]);
 
     const alcoholStatus = results.alcohol;
-    const temperatureValue = results.temperature;
+	const temperatureValue = parseFloat(results.temperature).toFixed(2);
+
 
     return (
         <div className="min-h-screen bg-black text-white flex flex-col">
