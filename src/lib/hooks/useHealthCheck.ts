@@ -113,17 +113,23 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
             }
 
-            updateState({
-                stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
-                temperatureData: state.currentState === "TEMPERATURE"
-                    ? { temperature: Number(data.temperature) || 0 }
-                    : state.temperatureData,
-                alcoholData: state.currentState === "ALCOHOL"
+            // 🚀 Ensure stabilityTime updates correctly
+            setState((prev) => ({
+                ...prev,
+                stabilityTime: prev.currentState === "TEMPERATURE" 
+                    ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME) 
+                    : prev.stabilityTime,
+                temperatureData: prev.currentState === "TEMPERATURE" 
+                    ? { temperature: Number(data.temperature) || 0 } 
+                    : prev.temperatureData,
+                alcoholData: prev.currentState === "ALCOHOL"
                     ? { alcoholLevel: alcoholStatus }
-                    : state.alcoholData,
-            });
+                    : prev.alcoholData,
+            }));
+
+            console.log("🔥 Updated stabilityTime:", state.stabilityTime);
         },
-        [state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
+        [handleTimeout]
     );
 
     useEffect(() => {
@@ -167,7 +173,7 @@ export const useHealthCheck = (): HealthCheckState & {
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0,
+                stabilityTime: 0, // ✅ Reset stability time
             });
 
             refs.isSubmitting = false;
