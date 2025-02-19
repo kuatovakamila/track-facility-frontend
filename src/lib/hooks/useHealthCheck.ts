@@ -2,14 +2,13 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
-// import toast from "react-hot-toast";
 
 // Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
-// const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
-const PING_INTERVAL = 30000; // ✅ Ping the server every 30 seconds
+const PING_INTERVAL = 30000;
 
+// Define sensor data types
 type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
@@ -17,7 +16,7 @@ type SensorData = {
 };
 
 type HealthCheckState = {
-    currentState: StateKey;
+    currentState: StateKey | "FACE_ID";
     stabilityTime: number;
     temperatureData: { temperature: number };
     alcoholData: { alcoholLevel: string };
@@ -32,7 +31,6 @@ const configureSocketListeners = (
         onError: () => void;
     }
 ) => {
-    // ✅ REMOVE PREVIOUS LISTENERS BEFORE ADDING NEW ONES
     socket.off("temperature");
     socket.off("alcohol");
     socket.off("camera");
@@ -66,8 +64,7 @@ export const useHealthCheck = (): HealthCheckState & {
         hasTimedOut: false,
         isSubmitting: false,
         hasNavigated: false,
-        sessionCount: 0, // ✅ Track session count to ensure smooth transitions
-        pingInterval: null as NodeJS.Timeout | null, // ✅ Ping interval to keep connection alive
+        pingInterval: null as NodeJS.Timeout | null,
     }).current;
 
     const updateState = useCallback(
@@ -80,11 +77,6 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
-
-        // toast.error(TIMEOUT_MESSAGE, {
-        //     duration: 3000,
-        //     style: { background: "#272727", color: "#fff", borderRadius: "8px" },
-        // });
         navigate("/");
     }, [navigate]);
 
@@ -94,7 +86,6 @@ export const useHealthCheck = (): HealthCheckState & {
                 console.warn("⚠️ Received empty data packet");
                 return;
             }
-
             console.log("📡 Sensor data received:", data);
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
@@ -125,52 +116,43 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     useEffect(() => {
-        if (!refs.socket) {
-            refs.socket = io(import.meta.env.VITE_SERVER_URL, {
-                transports: ["websocket"],
-                reconnection: true,
-                reconnectionAttempts: 50, // ✅ Increase reconnection attempts
-                reconnectionDelay: 5000,
-            });
+        if (state.currentState === "FACE_ID") {
+            if (!refs.socket) {
+                refs.socket = io(import.meta.env.VITE_SERVER_URL, {
+                    transports: ["websocket"],
+                    reconnection: true,
+                    reconnectionAttempts: 50,
+                    reconnectionDelay: 5000,
+                });
 
-            refs.socket.on("connect", () => {
-                console.log("✅ WebSocket connected.");
-            });
+                refs.socket.on("connect", () => {
+                    console.log("✅ WebSocket connected.");
+                });
 
-            refs.socket.on("disconnect", (reason) => {
-                console.warn("⚠️ WebSocket disconnected:", reason);
-                refs.socket = null;
+                refs.socket.on("disconnect", (reason) => {
+                    console.warn("⚠️ WebSocket disconnected:", reason);
+                });
 
-                // ✅ Auto-reconnect if unexpected disconnection occurs
-                setTimeout(() => {
-                    if (!refs.socket) {
-                        refs.socket = io(import.meta.env.VITE_SERVER_URL, {
-                            transports: ["websocket"],
-                            reconnection: true,
-                            reconnectionAttempts: 50,
-                            reconnectionDelay: 5000,
-                        });
+                refs.pingInterval = setInterval(() => {
+                    if (refs.socket?.connected) {
+                        refs.socket.emit("ping");
+                        console.log("📡 Sent keep-alive ping to server");
                     }
-                }, 2000);
+                }, PING_INTERVAL);
+            }
+
+            configureSocketListeners(refs.socket, state.currentState, {
+                onData: handleDataEvent,
+                onError: handleTimeout,
             });
-
-            // ✅ Keep connection alive by sending a ping every 30 seconds
-            refs.pingInterval = setInterval(() => {
-                if (refs.socket?.connected) {
-                    refs.socket.emit("ping");
-                    console.log("📡 Sent keep-alive ping to server");
-                }
-            }, PING_INTERVAL);
+        } else {
+            if (refs.socket) {
+                console.log("🔴 Disconnecting WebSocket due to navigation");
+                refs.socket.disconnect();
+                refs.socket = null;
+                clearInterval(refs.pingInterval!);
+            }
         }
-
-        configureSocketListeners(refs.socket, state.currentState, {
-            onData: handleDataEvent,
-            onError: handleTimeout,
-        });
-
-        return () => {
-            console.log("🛑 Not cleaning up event listeners until authentication is fully done...");
-        };
     }, [state.currentState, handleTimeout, handleDataEvent]);
 
     const handleComplete = useCallback(async () => {
