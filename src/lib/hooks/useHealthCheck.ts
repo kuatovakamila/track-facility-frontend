@@ -6,6 +6,7 @@ import { StateKey } from "../constants";
 // Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
+const ALCOHOL_TIMEOUT = 10000; // Timeout for alcohol state
 
 // Define sensor data types
 type SensorData = {
@@ -20,6 +21,7 @@ type HealthCheckState = {
     temperatureData: { temperature: number };
     alcoholData: { alcoholLevel: string };
     secondsLeft: number;
+    errorMessage?: string;
 };
 
 const configureSocketListeners = (
@@ -56,11 +58,13 @@ export const useHealthCheck = (): HealthCheckState & {
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: "Не определено" },
         secondsLeft: 15,
+        errorMessage: ""
     });
 
     const refs = useRef({
         socket: null as Socket | null,
         timeout: null as NodeJS.Timeout | null,
+        alcoholTimeout: null as NodeJS.Timeout | null,
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
@@ -78,9 +82,10 @@ export const useHealthCheck = (): HealthCheckState & {
         refs.hasTimedOut = true;
         console.warn("⏳ Timeout reached");
         if (state.currentState === "ALCOHOL") {
+            updateState({ errorMessage: "⏳ Ошибка: Не удалось определить уровень алкоголя." });
             navigate("/");
         }
-    }, []);
+    }, [navigate, updateState, state.currentState]);
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
@@ -92,11 +97,20 @@ export const useHealthCheck = (): HealthCheckState & {
             let alcoholStatus = "Не определено";
             if (data.alcoholLevel !== undefined) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
+                clearTimeout(refs.alcoholTimeout!); // Clear timeout when valid alcohol data is received
             }
 
             setState((prev) => {
                 const isTemperatureStable = prev.currentState === "TEMPERATURE" && prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
                 const nextState = isTemperatureStable ? "ALCOHOL" : prev.currentState;
+
+                if (nextState === "ALCOHOL" && prev.currentState !== "ALCOHOL") {
+                    refs.alcoholTimeout = setTimeout(() => {
+                        console.warn("⏳ Alcohol data timeout reached");
+                        updateState({ errorMessage: "⏳ Ошибка: Не удалось определить уровень алкоголя." });
+                        navigate("/");
+                    }, ALCOHOL_TIMEOUT);
+                }
 
                 return {
                     ...prev,
@@ -107,7 +121,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 };
             });
         },
-        [handleTimeout]
+        [handleTimeout, navigate, updateState]
     );
 
     useEffect(() => {
