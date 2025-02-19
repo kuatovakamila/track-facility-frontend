@@ -66,7 +66,8 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
-        hasNavigated: false, // ✅ NEW FLAG TO PREVENT RESET AFTER NAVIGATION
+        hasNavigated: false,
+        sessionCount: 0, // ✅ Track session count to ensure smooth transitions
     }).current;
 
     const updateState = useCallback(
@@ -158,7 +159,7 @@ export const useHealthCheck = (): HealthCheckState & {
         });
 
         return () => {
-            console.log("🛑 Not cleaning up event listeners until authorization is complete...");
+            console.log("🛑 Not cleaning up event listeners until full authentication is complete...");
         };
     }, [state.currentState, handleTimeout, handleDataEvent]);
 
@@ -185,8 +186,8 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("📡 Sending final data...");
 
-            // ✅ Prevent WebSocket from being reset when navigating
             refs.hasNavigated = true;
+            refs.sessionCount += 1; // ✅ Track completed sessions
 
             localStorage.setItem("results", JSON.stringify({
                 temperature: state.temperatureData.temperature,
@@ -196,23 +197,25 @@ export const useHealthCheck = (): HealthCheckState & {
             navigate("/complete-authentication", { state: { success: true } });
 
             setTimeout(() => {
-                console.log("⏳ Navigating to home...");
+                console.log("⏳ Returning to home and preparing next session...");
                 navigate("/");
+
+                setTimeout(() => {
+                    // ✅ RESET STATE FOR NEXT SESSION WITHOUT DISCONNECTING SOCKET
+                    console.log(`🔄 Starting new session #${refs.sessionCount + 1}`);
+                    updateState({
+                        currentState: "TEMPERATURE",
+                        stabilityTime: 0,
+                        temperatureData: { temperature: 0 },
+                        alcoholData: { alcoholLevel: "Не определено" },
+                        secondsLeft: 15,
+                    });
+                }, 1000);
             }, 4000);
         } catch (error) {
             console.error("❌ Submission error:", error);
             toast.error("Ошибка отправки данных. Проверьте соединение.");
             refs.isSubmitting = false;
-        } finally {
-            // ✅ ONLY CLEAN UP WEBSOCKET IF NAVIGATION HAS COMPLETED
-            if (refs.hasNavigated) {
-                console.log("🛑 Cleaning up event listeners after full authentication...");
-                refs.socket?.off("temperature");
-                refs.socket?.off("alcohol");
-                refs.socket?.off("camera");
-                refs.socket?.disconnect();
-                refs.socket = null; // Ensure WebSocket is properly reset
-            }
         }
     }, [state, navigate, updateState]);
 
