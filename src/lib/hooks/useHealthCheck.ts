@@ -6,7 +6,6 @@ import { StateKey } from "../constants";
 // Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
-const ALCOHOL_TIMEOUT = 7000;
 
 // Define sensor data types
 type SensorData = {
@@ -78,10 +77,10 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
         console.warn("⏳ Timeout reached");
-        if (state.currentState === "ALCOHOL" && Date.now() - refs.lastDataTime > ALCOHOL_TIMEOUT) {
+        if (state.currentState === "ALCOHOL") {
             navigate("/");
         }
-    }, [state.currentState, navigate]);
+    }, []);
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
