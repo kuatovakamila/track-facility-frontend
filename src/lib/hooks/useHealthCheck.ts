@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 
 // Constants
 const MAX_STABILITY_TIME = 7;
-const SOCKET_TIMEOUT = 15000;
+const SOCKET_TIMEOUT = 20000;
 const ALCOHOL_TIMEOUT = 10000; // Timeout for alcohol state
 const TIMEOUT_MESSAGE =
 	"Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
