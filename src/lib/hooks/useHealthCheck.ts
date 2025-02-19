@@ -9,12 +9,12 @@ const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
 
+// Type definitions
 type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
-    cameraStatus?: "failed" | "success"; // ✅ Добавляем обработку камеры
+	cameraStatus?: 'failed' | 'success'
 };
-
 
 type HealthCheckState = {
     currentState: StateKey;
@@ -103,43 +103,46 @@ export const useHealthCheck = (): HealthCheckState & {
         navigate("/");
     }, [navigate]);
 
-	const handleDataEvent = useCallback(
-		(data: SensorData) => {
-			if (!data) return;
-	
-			refs.lastDataTime = Date.now();
-			clearTimeout(refs.timeout!);
-			refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-	
-			// 🛠 Track alcohol measurement completion
-			let alcoholStatus = state.alcoholData.alcoholLevel;
-			let isAlcoholMeasured = false;
-	
-			if (data.alcoholLevel) {
-				console.log("📡 Alcohol Data Received:", data.alcoholLevel);
-	
-				if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
-					alcoholStatus = data.alcoholLevel;
-					isAlcoholMeasured = true;
-				}
-			}
-	
-			// ✅ Update state only when alcohol measurement is valid
-			updateState({
-				stabilityTime: isAlcoholMeasured
-					? Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME)
-					: state.stabilityTime, // ⏳ Progress only when valid data received
-				temperatureData: state.currentState === "TEMPERATURE"
-					? { temperature: Number(data.temperature!) }
-					: state.temperatureData,
-				alcoholData: state.currentState === "ALCOHOL"
-					? { alcoholLevel: alcoholStatus }
-					: state.alcoholData,
-			});
-		},
-		[state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
-	);
-	
+    // Handle incoming data from WebSocket
+    const handleDataEvent = useCallback(
+        (data: SensorData) => {
+            if (!data) {
+                console.warn("⚠️ Received empty data packet");
+                return;
+            }
+
+            console.log("📡 Full sensor data received:", data);
+            refs.lastDataTime = Date.now();
+            clearTimeout(refs.timeout!);
+            refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+
+            let alcoholStatus = "Не определено";
+            if (data.alcoholLevel) {
+                console.log("📡 Raw alcohol data received:", data.alcoholLevel);
+
+                if (data.alcoholLevel === "normal") {
+                    alcoholStatus = "Трезвый";
+                    console.log("✅ User is Трезвый (Sober)!");
+                } else if (data.alcoholLevel === "abnormal") {
+                    alcoholStatus = "Пьяный";
+                    console.log("🚨 User is Пьяный (Drunk)!");
+                }
+            } else {
+                console.warn("⚠️ No alcohol data received from backend!");
+            }
+
+            updateState({
+                stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
+                temperatureData: state.currentState === "TEMPERATURE"
+                    ? { temperature: Number(data.temperature) || 0 }
+                    : state.temperatureData,
+                alcoholData: state.currentState === "ALCOHOL"
+                    ? { alcoholLevel: alcoholStatus }
+                    : state.alcoholData,
+            });
+        },
+        [state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
+    );
 	useEffect(() => {
 		if (refs.socket) return;
 		refs.hasTimedOut = false;
@@ -245,63 +248,66 @@ export const useHealthCheck = (): HealthCheckState & {
 	}, [state.currentState, handleTimeout, handleDataEvent, navigate]);
 	
 	
-	const handleComplete = useCallback(async () => {
-		if (refs.isSubmitting) return;
-		refs.isSubmitting = true;
 	
-		const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
-		if (currentIndex < STATE_SEQUENCE.length - 1) {
-			updateState({
-				currentState: STATE_SEQUENCE[currentIndex + 1],
-				stabilityTime: 0,
-			});
-			refs.isSubmitting = false;
-			return;
-		}
-	
-		// 🚨 **CHECK IF ALCOHOL MEASUREMENT WAS RECEIVED**
-		if (state.currentState === "ALCOHOL" && (state.alcoholData.alcoholLevel === "undefined" || state.alcoholData.alcoholLevel === "")) {
-			console.warn("⚠️ No alcohol data received! Redirecting...");
-			toast.error("Не удалось измерить уровень алкоголя. Попробуйте снова.");
-			navigate("/");
-			return;
-		}
-	
-		try {
-			const faceId = localStorage.getItem("faceId");
-			if (!faceId) throw new Error("Face ID not found");
-	
-			const response = await fetch(
-				`${import.meta.env.VITE_SERVER_URL}/health`,
-				{
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						temperatureData: state.temperatureData,
-						alcoholData: state.alcoholData,
-						faceId,
-					}),
-				},
-			);
-	
-			if (!response.ok) throw new Error("Request failed");
-	
-			localStorage.setItem(
-				"results",
-				JSON.stringify({
-					temperature: state.temperatureData.temperature,
-					alcohol: state.alcoholData.alcoholLevel,
-				}),
-			);
-	
-			console.log("✅ Submission successful, navigating...");
-			navigate("/complete-authentication", { state: { success: true } });
-		} catch (error) {
-			console.error("❌ Submission error:", error);
-			refs.isSubmitting = false;
-		}
-	}, [state, navigate, updateState]);
-	
+    // Handle completion and state transitions
+    const handleComplete = useCallback(async () => {
+        if (refs.isSubmitting) return;
+        refs.isSubmitting = true;
+
+        console.log("🚀 Checking state sequence...");
+
+        const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
+        console.log("🔍 Current Index:", currentIndex, "State:", state.currentState);
+
+        if (currentIndex < STATE_SEQUENCE.length - 1) {
+            console.log("⏭️ Moving to next state:", STATE_SEQUENCE[currentIndex + 1]);
+
+            updateState({
+                currentState: STATE_SEQUENCE[currentIndex + 1],
+                stabilityTime: 0,
+            });
+
+            refs.isSubmitting = false;
+            return;
+        }
+
+        try {
+            refs.socket?.disconnect();
+            const faceId = localStorage.getItem("faceId");
+            if (!faceId) throw new Error("Face ID not found");
+
+            console.log("✅ All states completed, submitting final data...");
+
+            const response = await fetch(
+                `${import.meta.env.VITE_SERVER_URL}/health`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        temperatureData: state.temperatureData,
+                        alcoholData: state.alcoholData,
+                        faceId,
+                    }),
+                }
+            );
+
+            if (!response.ok) throw new Error("Request failed");
+
+            console.log("✅ Submission successful, navigating to complete authentication...");
+            localStorage.setItem(
+                "results",
+                JSON.stringify({
+                    temperature: state.temperatureData.temperature,
+                    alcohol: state.alcoholData.alcoholLevel,
+                })
+            );
+
+            navigate("/complete-authentication", { state: { success: true } });
+        } catch (error) {
+            console.error("❌ Submission error:", error);
+            refs.isSubmitting = false;
+        }
+    }, [state, navigate, refs, updateState]);
 
     return {
         ...state,
