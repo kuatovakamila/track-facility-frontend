@@ -140,8 +140,8 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.socket = io(import.meta.env.VITE_SERVER_URL, {
                 transports: ["websocket"],
                 reconnection: true,
-                reconnectionAttempts: 50,
-                reconnectionDelay: 1000,
+                reconnectionAttempts: 60,
+                reconnectionDelay: 500,
             });
 
             refs.socket.on("connect", () => {
