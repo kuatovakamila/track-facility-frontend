@@ -39,6 +39,7 @@ const configureSocketListeners = (
     if (currentState === "TEMPERATURE") {
         socket.on("temperature", handlers.onData);
     } else if (currentState === "ALCOHOL") {
+        console.log("🔄 Listening for alcohol data...");
         socket.on("alcohol", handlers.onData);
     }
 
@@ -80,11 +81,12 @@ export const useHealthCheck = (): HealthCheckState & {
         if (state.currentState === "ALCOHOL") {
             navigate("/");
         }
-    }, []);
+    }, [navigate, state.currentState]);
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             if (!data) return;
+            console.log("📡 Received sensor data:", data);
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
@@ -158,4 +160,4 @@ export const useHealthCheck = (): HealthCheckState & {
         handleComplete,
         setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
     };
-}; 
+};
