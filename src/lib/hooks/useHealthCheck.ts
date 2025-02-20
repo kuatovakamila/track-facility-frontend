@@ -19,7 +19,7 @@ type HealthCheckState = {
     currentState: StateKey;
     stabilityTime: number;
     temperatureData: { temperature: number };
-    alcoholData: { alcoholLevel: string | null }; // ✅ `null`, а не `undefined`
+    alcoholData: { alcoholLevel: string | null };
     secondsLeft: number;
 };
 
@@ -34,7 +34,7 @@ export const useHealthCheck = (): HealthCheckState & {
         currentState: "TEMPERATURE",
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
-        alcoholData: { alcoholLevel: null }, // ✅ null вместо undefined
+        alcoholData: { alcoholLevel: null },
         secondsLeft: 15,
     });
 
@@ -43,7 +43,7 @@ export const useHealthCheck = (): HealthCheckState & {
         timeout: null as NodeJS.Timeout | null,
         lastDataTime: Date.now(),
         hasTimedOut: false,
-        isSubmitting: false, // ✅ Исправлена ошибка отсутствия isSubmitting
+        isSubmitting: false,
         isAlcoholMeasured: false,
     }).current;
 
@@ -71,62 +71,69 @@ export const useHealthCheck = (): HealthCheckState & {
                 console.warn("⚠️ Received empty data packet");
                 return;
             }
-    
+
             console.log("📡 Full sensor data received:", data);
             refs.lastDataTime = Date.now();
-            clearTimeout(refs.timeout!);
+
+            if (refs.timeout) clearTimeout(refs.timeout);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-    
+
             let newAlcoholStatus = state.alcoholData.alcoholLevel;
             let newTemperature = state.temperatureData.temperature;
-    
-            // ✅ Обновляем температуру, если она пришла
-            if (data.temperature) {
+
+            // ✅ Update temperature progress for TEMPERATURE step
+            if (state.currentState === "TEMPERATURE" && data.temperature) {
                 newTemperature = Number(data.temperature);
                 console.log(`🌡 Updated temperature: ${newTemperature}`);
-            }
-    
-            // ✅ Если `alcoholLevel` `unknown` или не пришел - продолжаем слушать
-            if (data.alcoholLevel === "unknown" || !data.alcoholLevel) {
-                console.log("⏳ Waiting for valid alcoholLevel...");
+
                 setState((prev) => ({
                     ...prev,
-                    temperatureData: { temperature: newTemperature }, // ✅ Температура обновляется всегда
+                    temperatureData: { temperature: newTemperature },
+                    stabilityTime: Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
                 }));
+
+                if (state.stabilityTime + 1 >= MAX_STABILITY_TIME) {
+                    setTimeout(() => {
+                        console.log("🔄 Switching to ALCOHOL measurement...");
+                        setState((prev) => ({
+                            ...prev,
+                            currentState: "ALCOHOL",
+                            stabilityTime: 0,
+                        }));
+                    }, 500);
+                }
                 return;
             }
-    
-            // ✅ Если `abnormal` или `normal`, фиксируем один раз
+
+            // ✅ Keep listening until alcoholLevel is abnormal or normal
+            if (data.alcoholLevel === "unknown" || !data.alcoholLevel) {
+                console.log("⏳ Waiting for valid alcoholLevel...");
+                return;
+            }
+
+            // ✅ Save alcoholLevel only once
             if (!refs.isAlcoholMeasured && (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal")) {
                 newAlcoholStatus = data.alcoholLevel;
                 refs.isAlcoholMeasured = true;
-    
-                // ✅ Сохраняем в localStorage
+
                 localStorage.setItem("alcoholResult", JSON.stringify({ alcoholLevel: newAlcoholStatus }));
                 console.log("💾 Saved to localStorage:", newAlcoholStatus);
-            }
-    
-            // ✅ Обновляем состояние (температура + алкоголь)
-            setState((prev) => ({
-                ...prev,
-                stabilityTime: refs.isAlcoholMeasured ? MAX_STABILITY_TIME : prev.stabilityTime,
-                temperatureData: { temperature: newTemperature },
-                alcoholData: { alcoholLevel: newAlcoholStatus },
-            }));
-    
-            // ✅ После получения всего — завершаем проверку
-            if (refs.isAlcoholMeasured) {
+
+                setState((prev) => ({
+                    ...prev,
+                    stabilityTime: MAX_STABILITY_TIME,
+                    alcoholData: { alcoholLevel: newAlcoholStatus },
+                }));
+
                 setTimeout(() => {
                     console.log("🚀 Navigating to complete-authentication...");
                     navigate("/complete-authentication", { state: { success: true } });
                 }, 1000);
             }
         },
-        [handleTimeout, state.alcoholData.alcoholLevel, state.temperatureData.temperature, navigate]
+        [handleTimeout, state.currentState, state.alcoholData.alcoholLevel, state.temperatureData.temperature, state.stabilityTime, navigate]
     );
-    
-    
-    
+
     useEffect(() => {
         if (refs.socket) {
             refs.socket.off("temperature");
@@ -136,7 +143,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
         refs.hasTimedOut = false;
 
-        const SERVER_URL =  "http://localhost:3001"; // ✅ Теперь `process.env`
+        const SERVER_URL = process.env.VITE_SERVER_URL || "https://default-backend.com";
         console.log("🔗 Connecting to WebSocket:", SERVER_URL);
 
         const socket = io(SERVER_URL, {
@@ -195,9 +202,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
             const finalData = {
                 temperatureData: state.temperatureData,
-                alcoholData: state.alcoholData.alcoholLevel
-                    ? state.alcoholData
-                    : undefined, // ✅ Не отправляем undefined
+                alcoholData: state.alcoholData.alcoholLevel ? state.alcoholData : undefined,
                 faceId,
             };
 
@@ -215,11 +220,6 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("✅ Submission successful, navigating to complete authentication...");
 
-            localStorage.setItem("results", JSON.stringify({
-                temperature: state.temperatureData.temperature,
-                alcohol: state.alcoholData.alcoholLevel ?? "undefined",
-            }));
-
             if (refs.socket) {
                 refs.socket.disconnect();
                 refs.socket = null;
@@ -233,13 +233,15 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.isSubmitting = false;
         }
     }, [state, navigate, updateState]);
-
     return {
         ...state,
         handleComplete,
-        setCurrentState: (newState: React.SetStateAction<StateKey>) =>
+        setCurrentState: (newState: React.SetStateAction<StateKey>) => {
             updateState({
-                currentState: typeof newState === "function" ? newState(state.currentState) : newState,
-            }),
+                currentState:
+                    typeof newState === "function" ? newState(state.currentState) : newState,
+            });
+        },
     };
+    
 };
