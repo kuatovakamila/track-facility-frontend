@@ -65,13 +65,14 @@ export const useHealthCheck = (): HealthCheckState & {
                 return;
             }
 
-            console.log("📡 Sensor data received:", data);
+            console.log("📡 Received sensor data:", data);
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
             let alcoholStatus = state.alcoholData.alcoholLevel;
             if (data.alcoholLevel !== undefined) {
+                console.log(`🍷 Alcohol status received: ${data.alcoholLevel}`);
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
             }
 
@@ -105,8 +106,6 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     useEffect(() => {
-        console.log(`⚙️ useEffect triggered. Current state: ${state.currentState}`);
-
         if (!refs.socket) {
             console.log("🛠️ Initializing WebSocket connection...");
             refs.socket = io(import.meta.env.VITE_SERVER_URL, {
@@ -121,25 +120,20 @@ export const useHealthCheck = (): HealthCheckState & {
             });
 
             refs.socket.on("disconnect", (reason) => {
-                console.warn("⚠️ WebSocket disconnected, attempting to reconnect:", reason);
+                console.warn("⚠️ WebSocket disconnected:", reason);
             });
 
-            refs.socket.on("temperature", (data) => {
-                console.log("🔥 Temperature event received:", data);
-                handleDataEvent(data);
+            // 🔹 Log ALL incoming events
+            refs.socket.onAny((event, data) => {
+                console.log(`📡 Incoming WebSocket event: ${event}`, data);
             });
 
-            refs.socket.on("alcohol", (data) => {
-                console.log("🍷 Alcohol event received:", data);
-                handleDataEvent(data);
-            });
-
-            refs.socket.on("camera", (data) => {
-                console.log("📷 Camera event received:", data);
-                handleDataEvent(data);
-            });
+            // 🔹 Set up main event listeners
+            refs.socket.on("temperature", handleDataEvent);
+            refs.socket.on("alcohol", handleDataEvent);
+            refs.socket.on("camera", handleDataEvent);
         }
-    }, [state.currentState, handleDataEvent]);
+    }, []);
 
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
@@ -147,7 +141,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
         console.log("🚀 Completing health check...");
 
-        // Ensure the data is actually received before navigating
+        // 🔹 Ensure alcohol data is received before navigating
         if (state.alcoholData.alcoholLevel === "Не определено") {
             console.warn("🚨 Alcohol data missing, cannot complete!");
             refs.isSubmitting = false;
