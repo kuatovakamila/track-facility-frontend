@@ -3,16 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
 
-// Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 const ALCOHOL_TIMEOUT = 7000;
 
-// Define sensor data types
 type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
-    cameraStatus?: 'failed' | 'success';
+    cameraStatus?: "failed" | "success";
 };
 
 type HealthCheckState = {
@@ -96,6 +94,8 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
             }
 
+            console.log("📡 Received Alcohol Data from Server:", data);
+
             setState((prev) => {
                 const isTemperatureStable = prev.currentState === "TEMPERATURE" && prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
                 const nextState = isTemperatureStable ? "ALCOHOL" : prev.currentState;
@@ -148,16 +148,13 @@ export const useHealthCheck = (): HealthCheckState & {
 
             if (!response.ok) throw new Error("Request failed");
 
-            navigate("/complete-authentication", { replace: true });
+            navigate("/complete-authentication");
         } catch (error) {
             console.error("Submission error:", error);
             refs.isSubmitting = false;
         }
     }, [state, navigate, refs]);
 
-    return {
-        ...state,
-        handleComplete,
-        setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
-    };
+    return { ...state, handleComplete, setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
+};
 };
