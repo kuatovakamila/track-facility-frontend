@@ -39,7 +39,7 @@ const configureSocketListeners = (
 
     console.log(`🔄 Setting up WebSocket listeners`);
 
-    // Always listen to these events
+    // ✅ Always listen to all relevant events
     socket.on("temperature", handlers.onData);
     socket.on("alcohol", handlers.onData);
     socket.on("camera", handlers.onData);
@@ -104,6 +104,8 @@ export const useHealthCheck = (): HealthCheckState & {
     // Handle incoming WebSocket data
     const handleDataEvent = useCallback(
         (data: SensorData) => {
+            console.log("📡 Received WebSocket data:", data);
+
             if (!data) return;
             refs.lastDataTime = Date.now();
 
@@ -113,6 +115,10 @@ export const useHealthCheck = (): HealthCheckState & {
                     handleTimeout();
                 }
             }, SOCKET_TIMEOUT);
+            
+            if (data.alcoholLevel !== undefined) {
+                console.log("🧪 Alcohol Level Data:", data.alcoholLevel);
+            }
 
             let alcoholStatus = state.alcoholData.alcoholLevel;
             if (data.alcoholLevel !== undefined) {
@@ -159,6 +165,14 @@ export const useHealthCheck = (): HealthCheckState & {
                 reconnection: true,
                 reconnectionAttempts: Infinity,
                 reconnectionDelay: 1000,
+            });
+
+            refs.socket.on("connect", () => {
+                console.log("✅ WebSocket connected");
+            });
+
+            refs.socket.on("disconnect", () => {
+                console.warn("⚠️ WebSocket disconnected! Reconnecting...");
             });
         }
 
