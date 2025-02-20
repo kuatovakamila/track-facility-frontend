@@ -19,7 +19,7 @@ type HealthCheckState = {
     stabilityTime: number;
     temperatureData: { temperature: number };
     alcoholData: { alcoholLevel: string | null };
-    faceId: string | null; // ✅ Preloaded Face ID
+    faceId: string | null;
     secondsLeft: number;
 };
 
@@ -35,7 +35,7 @@ export const useHealthCheck = (): HealthCheckState & {
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: null },
-        faceId: null, // ✅ Preloaded Face ID
+        faceId: null,
         secondsLeft: 15,
     });
 
@@ -45,9 +45,10 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
+        isFinalSubmit: false, // ✅ Prevents multiple submissions
     }).current;
 
-    // ✅ Preload Face ID once to avoid delays
+    // ✅ Preload Face ID once
     useEffect(() => {
         const storedFaceId = localStorage.getItem("faceId");
         if (storedFaceId) {
@@ -89,25 +90,28 @@ export const useHealthCheck = (): HealthCheckState & {
             let newAlcoholStatus = state.alcoholData.alcoholLevel;
             let newTemperature = state.temperatureData.temperature;
 
-            // ✅ Store temperature without triggering submission
+            // ✅ Store temperature but don't trigger submission
             if (data.temperature) {
                 newTemperature = Number(data.temperature);
                 setState((prev) => ({
                     ...prev,
-                    temperatureData: { temperature: newTemperature }, // Store final value
+                    temperatureData: { temperature: newTemperature }, // Store temperature locally
                     stabilityTime: Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
                 }));
             }
 
-            // ✅ If alcohol measurement is complete, send all data once
+            // ✅ Only send data once when alcohol measurement is complete
             if (
                 data.measurementComplete &&
-                (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal")
+                (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") &&
+                !refs.isFinalSubmit
             ) {
                 console.log("✅ Final alcohol level detected:", data.alcoholLevel);
+                refs.isFinalSubmit = true; // ✅ Prevents multiple submissions
+
                 newAlcoholStatus = data.alcoholLevel;
 
-                // ✅ Save result
+                // ✅ Save measurement result
                 localStorage.setItem(
                     "measurementResult",
                     JSON.stringify({
@@ -199,7 +203,7 @@ export const useHealthCheck = (): HealthCheckState & {
         const toastId = toast.loading("Отправка данных...");
 
         try {
-            const response = await fetch("http://localhost:3001/health", {
+            const response = await fetch(`${process.env.VITE_SERVER_URL}/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(finalData),
@@ -223,7 +227,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
     return {
         ...state,
-        handleComplete: () => handleComplete(), // ✅ Call without parameters
+        handleComplete: () => handleComplete(),
         setCurrentState: (newState: React.SetStateAction<StateKey>) => {
             updateState({
                 currentState:
@@ -232,3 +236,5 @@ export const useHealthCheck = (): HealthCheckState & {
         },
     };
 };
+
+  
