@@ -3,10 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import toast from "react-hot-toast";
 
+// ✅ Используем переменную окружения для сервера
+const SERVER_URL = process.env.VITE_SERVER_URL || "http://localhost:3001";
+
 // Константы
 const MAX_STABILITY_TIME = 7;
 const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
-
 
 // Типы данных
 type HealthCheckState = {
@@ -43,7 +45,7 @@ export const useHealthCheck = (): HealthCheckState & {
     useEffect(() => {
         if (refs.socket) return;
 
-        const socket = io('http://localhost:3001', {
+        const socket = io(SERVER_URL, {
             transports: ["websocket"],
             reconnection: true,
             reconnectionAttempts: 10,
@@ -141,7 +143,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("✅ Отправляем данные...");
 
-            const response = await fetch(`http://localhost:3001/health`, {
+            const response = await fetch(`${SERVER_URL}/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
