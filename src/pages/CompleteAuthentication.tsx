@@ -1,80 +1,61 @@
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { CheckCircle, Thermometer, Wine } from "@phosphor-icons/react";
+import { useHealthCheck } from "../lib/hooks/useHealthCheck";
 import { Header } from "../components/Header";
-import { useNavigate } from "react-router-dom";
+import { LoadingCircle } from "../components/LoadingCircle";
+import { STATES } from "../lib/constants";
+import { motion, AnimatePresence } from "framer-motion";
 
-export default function CompleteAuthentication() {
-    const navigate = useNavigate();
-    const [results, setResults] = useState({ temperature: "Не определено", alcohol: "Не определено" });
+const MAX_STABILITY_TIME = 7;
 
-    // ✅ Load results AFTER component mounts to ensure updates
-    useEffect(() => {
-        const storedResults = localStorage.getItem("results");
-        if (storedResults) {
-            console.log("🔄 Updating results from LocalStorage:", storedResults);
-            setResults(JSON.parse(storedResults));
-        }
-    }, []); // Ensures latest localStorage data is used
+export default function HealthCheck() {
+	const {
+		currentState,
+		stabilityTime,
+		temperatureData,
+		alcoholData,
+		secondsLeft,
+		handleComplete,
+	} = useHealthCheck();
 
-    // ✅ Prevent navigation until correct values are received
-    useEffect(() => {
-        if (results.alcohol !== "Не определено" && results.temperature !== "Не определено") {
-            console.log("✅ Correct results received, preparing to navigate...");
+	const state = STATES[currentState];
 
-            const timer = setTimeout(() => {
-                console.log("➡️ Navigating to completion screen...");
-                navigate("/");
-            }, 5000);
+	let displayValue: string | number | null = "loading";
+	if (currentState === "TEMPERATURE" && temperatureData?.temperature !== undefined) {
+		displayValue = Number(temperatureData.temperature).toFixed(1);
+	} else if (currentState === "ALCOHOL" && alcoholData?.alcoholLevel) {
+		displayValue = alcoholData.alcoholLevel;
+		console.log("📡 Alcohol Level Displayed:", displayValue);
+	}
 
-            return () => clearTimeout(timer);
-        } else {
-            console.warn("⚠️ Incomplete results received, waiting for update...");
-        }
-    }, [navigate, results]);
+	return (
+		<div className="min-h-screen bg-black text-white flex flex-col">
+			<Header />
+			<motion.div className="flex-1 flex flex-col items-center justify-center p-6">
+				<AnimatePresence mode="wait">
+					<motion.div key={currentState} className="text-center">
+						<motion.h1 className="text-xl md:text-2xl font-medium mb-2">
+							{state.title}
+						</motion.h1>
+						<motion.p className="text-gray-400 mb-12">{state.subtitle}</motion.p>
+					</motion.div>
+				</AnimatePresence>
 
-    const alcoholStatus = results.alcohol;
-	const temperatureValue = parseFloat(results.temperature).toFixed(2);
+				<div className="flex flex-col items-center gap-4">
+					<LoadingCircle
+						key={currentState}
+						icon={state.icon}
+						value={displayValue}
+						unit={state.unit}
+						progress={(stabilityTime / MAX_STABILITY_TIME) * 100}
+						onComplete={handleComplete}
+					/>
 
-
-    return (
-        <div className="min-h-screen bg-black text-white flex flex-col">
-            <Header />
-            <div className="flex-1 flex flex-col items-center justify-center p-6">
-                <motion.div
-                    className="bg-[#272727] rounded-3xl p-6 md:p-8 w-full max-w-md flex flex-col items-center"
-                    initial={{ scale: 0.9, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                >
-                    <CheckCircle size={64} className="text-green-500 mb-4" weight="fill" />
-
-                    <h1 className="text-xl sm:text-2xl font-medium mb-4">Добро пожаловать!</h1>
-
-                    <div className="w-full">
-                        <p className="text-gray-400 mb-2 md:mb-4">Ваша статистика</p>
-                        <div className="flex flex-col sm:flex-row justify-between gap-2">
-                            <motion.div
-                                className="w-full flex items-center gap-2 bg-black/50 rounded-full px-4 py-2"
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.2 }}
-                            >
-                                <Thermometer size={20} />
-                                <span className="text-md">{temperatureValue}°C</span>
-                            </motion.div>
-                            <motion.div
-                                className="w-full flex items-center gap-2 bg-black/50 rounded-full px-4 py-2"
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.3 }}
-                            >
-                                <Wine size={20} />
-                                <span className="text-md">{alcoholStatus}</span>
-                            </motion.div>
-                        </div>
-                    </div>
-                </motion.div>
-            </div>
-        </div>
-    );
+					{displayValue === "loading" && (
+						<span className="text-sm text-gray-400">
+							{`Осталось ${secondsLeft} секунд`}
+						</span>
+					)}
+				</div>
+			</motion.div>
+		</div>
+	);
 }
