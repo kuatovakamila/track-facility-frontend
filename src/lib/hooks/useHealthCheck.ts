@@ -45,6 +45,7 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
+        isFinalSubmit: false, // ✅ Ensures final data is only sent once
     }).current;
 
     // ✅ Preload Face ID once
@@ -89,7 +90,7 @@ export const useHealthCheck = (): HealthCheckState & {
             let newAlcoholStatus = state.alcoholData.alcoholLevel;
             let newTemperature = state.temperatureData.temperature;
 
-            // ✅ Store temperature but don’t send it immediately
+            // ✅ Store temperature without triggering submission
             if (data.temperature) {
                 newTemperature = Number(data.temperature);
                 setState((prev) => ({
@@ -100,15 +101,24 @@ export const useHealthCheck = (): HealthCheckState & {
             }
 
             // ✅ If alcohol measurement is complete, send all data once
-            if (data.measurementComplete && (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal")) {
+            if (
+                data.measurementComplete &&
+                (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") &&
+                !refs.isFinalSubmit
+            ) {
                 console.log("✅ Final alcohol level detected:", data.alcoholLevel);
+                refs.isFinalSubmit = true; // ✅ Prevents multiple submissions
+
                 newAlcoholStatus = data.alcoholLevel;
 
                 // ✅ Save result
-                localStorage.setItem("measurementResult", JSON.stringify({
-                    alcoholLevel: newAlcoholStatus,
-                    temperature: newTemperature,
-                }));
+                localStorage.setItem(
+                    "measurementResult",
+                    JSON.stringify({
+                        alcoholLevel: newAlcoholStatus,
+                        temperature: newTemperature,
+                    })
+                );
 
                 // ✅ Update UI and progress bar
                 setState((prev) => ({
@@ -165,6 +175,7 @@ export const useHealthCheck = (): HealthCheckState & {
             socket.off("alcohol");
         };
     }, [handleDataEvent, navigate]);
+
     const handleComplete = useCallback(async (finalTemperature?: number, finalAlcoholLevel?: string) => {
         if (refs.isSubmitting) return;
         refs.isSubmitting = true;
@@ -214,7 +225,6 @@ export const useHealthCheck = (): HealthCheckState & {
         }
     }, [state, navigate]);
     
-
     return {
         ...state,
         handleComplete,
@@ -226,3 +236,4 @@ export const useHealthCheck = (): HealthCheckState & {
         },
     };
 };
+
