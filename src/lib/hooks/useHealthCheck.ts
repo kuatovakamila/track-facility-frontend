@@ -25,6 +25,7 @@ const socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost:3001", {
     reconnectionDelay: 5000,
 });
 
+const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
 
@@ -62,12 +63,25 @@ export const useHealthCheck = (): HealthCheckState & {
         console.log("✅ Listening for temperature via WebSocket...");
 
         socket.on("temperature", (data) => {
-            console.log("📡 Temperature data received:", data);
+            console.log("📡 Received Temperature Data:", data);
 
-            setState((prev) => ({
-                ...prev,
-                temperatureData: { temperature: Number(data.temperature) || 0 },
-            }));
+            if (!data || typeof data.temperature === "undefined") {
+                console.warn("⚠️ No valid temperature data received.");
+                return;
+            }
+
+            setState((prev) => {
+                const updatedStabilityTime = prev.currentState === "TEMPERATURE"
+                    ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
+                    : prev.stabilityTime;
+                
+                console.log("🔥 Updated Stability Time:", updatedStabilityTime);
+                return {
+                    ...prev,
+                    temperatureData: { temperature: Number(data.temperature) || 0 },
+                    stabilityTime: updatedStabilityTime,
+                };
+            });
         });
 
         return () => {
@@ -130,6 +144,10 @@ export const useHealthCheck = (): HealthCheckState & {
             cleanupAlcohol();
         };
     }, [listenToTemperatureData, listenToAlcoholData]);
+
+    useEffect(() => {
+        console.log("🔥 State Updated:", state);
+    }, [state]);
 
     const handleComplete = useCallback(async (): Promise<void> => {
         return new Promise<void>((resolve) => {
