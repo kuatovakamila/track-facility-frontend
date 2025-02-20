@@ -13,6 +13,7 @@ type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
     cameraStatus?: 'failed' | 'success';
+    measurementComplete?: boolean;
 };
 
 type HealthCheckState = {
@@ -81,52 +82,33 @@ export const useHealthCheck = (): HealthCheckState & {
             let newAlcoholStatus = state.alcoholData.alcoholLevel;
             let newTemperature = state.temperatureData.temperature;
 
-            // ✅ Update temperature progress for TEMPERATURE step
-            if (state.currentState === "TEMPERATURE" && data.temperature) {
+            // ✅ Update temperature progress
+            if (data.temperature) {
                 newTemperature = Number(data.temperature);
-                console.log(`🌡 Updated temperature: ${newTemperature}`);
-
                 setState((prev) => ({
                     ...prev,
                     temperatureData: { temperature: newTemperature },
                     stabilityTime: Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
                 }));
-
-                if (state.stabilityTime + 1 >= MAX_STABILITY_TIME) {
-                    setTimeout(() => {
-                        console.log("🔄 Switching to ALCOHOL measurement...");
-                        setState((prev) => ({
-                            ...prev,
-                            currentState: "ALCOHOL",
-                            stabilityTime: 0,
-                        }));
-                    }, 500);
-                }
-                return;
             }
 
-            // ✅ Keep listening until alcoholLevel is abnormal or normal
-            if (data.alcoholLevel === "unknown" || !data.alcoholLevel) {
-                console.log("⏳ Waiting for valid alcoholLevel...");
-                return;
-            }
-
-            // ✅ Save alcoholLevel only once
-            if (!refs.isAlcoholMeasured && (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal")) {
+            // ✅ If `measurementComplete` is received, finalize alcohol level
+            if (data.measurementComplete && (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal")) {
+                console.log("✅ Final alcohol level detected:", data.alcoholLevel);
                 newAlcoholStatus = data.alcoholLevel;
-                refs.isAlcoholMeasured = true;
 
+                // ✅ Save result
                 localStorage.setItem("alcoholResult", JSON.stringify({ alcoholLevel: newAlcoholStatus }));
-                console.log("💾 Saved to localStorage:", newAlcoholStatus);
 
+                // ✅ Update UI and progress bar
                 setState((prev) => ({
                     ...prev,
                     stabilityTime: MAX_STABILITY_TIME,
                     alcoholData: { alcoholLevel: newAlcoholStatus },
                 }));
 
+                // ✅ Navigate to complete-authentication
                 setTimeout(() => {
-                    console.log("🚀 Navigating to complete-authentication...");
                     navigate("/complete-authentication", { state: { success: true } });
                 }, 1000);
             }
@@ -233,6 +215,7 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.isSubmitting = false;
         }
     }, [state, navigate, updateState]);
+
     return {
         ...state,
         handleComplete,
@@ -243,5 +226,4 @@ export const useHealthCheck = (): HealthCheckState & {
             });
         },
     };
-    
 };
