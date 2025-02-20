@@ -117,7 +117,7 @@ export const useHealthCheck = (): HealthCheckState & {
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-            let alcoholStatus = "Не определено";
+            let alcoholStatus = state.alcoholData.alcoholLevel;
             let temperatureValue = state.temperatureData.temperature;
 
             if (data.alcoholLevel) {
@@ -128,23 +128,26 @@ export const useHealthCheck = (): HealthCheckState & {
             if (data.temperature) {
                 temperatureValue = Number(data.temperature) || 0;
                 console.log("🌡️ Processed Temperature Data:", temperatureValue);
-            } else {
-                console.warn("⚠️ No temperature data received, ignoring update.");
             }
 
-            setState((prev) => ({
-                ...prev,
-                stabilityTime:
-                    prev.currentState === "TEMPERATURE"
-                        ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
-                        : prev.stabilityTime,
-                temperatureData: prev.currentState === "TEMPERATURE"
-                    ? { temperature: temperatureValue }
-                    : prev.temperatureData,
-                alcoholData: prev.currentState === "ALCOHOL"
-                    ? { alcoholLevel: alcoholStatus }
-                    : prev.alcoholData,
-            }));
+            setState((prev) => {
+                let newStabilityTime = prev.stabilityTime;
+
+                if (prev.currentState === "TEMPERATURE" && data.temperature) {
+                    newStabilityTime = Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME);
+                }
+
+                if (prev.currentState === "ALCOHOL" && data.alcoholLevel) {
+                    newStabilityTime = MAX_STABILITY_TIME;
+                }
+
+                return {
+                    ...prev,
+                    stabilityTime: newStabilityTime,
+                    temperatureData: { temperature: temperatureValue },
+                    alcoholData: { alcoholLevel: alcoholStatus },
+                };
+            });
 
             if (state.currentState === "ALCOHOL" && data.alcoholLevel) {
                 setTimeout(handleComplete, 300);
