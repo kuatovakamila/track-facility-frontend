@@ -14,15 +14,14 @@ type SensorData = {
     alcoholLevel?: string;
     sensorStatus?: string;
     sensorReady?: boolean;
-    cameraStatus?: 'failed' | 'success';
 };
 
 type HealthCheckState = {
     currentState: StateKey;
     stabilityTime: number;
     temperatureData: { temperature: number };
-    alcoholData: { alcoholLevel: string; sensorStatus?: string; sensorReady?: boolean };
-    validAlcoholReceived: boolean; // ✅ Флаг, получены ли корректные данные алкоголя
+    alcoholData: { alcoholLevel: string };
+    isFinalAlcoholStored: boolean; // ✅ Ensures we store only once
     secondsLeft: number;
 };
 
@@ -38,15 +37,12 @@ const configureSocketListeners = (
 ) => {
     socket.off("temperature");
     socket.off("alcohol");
-    socket.off("camera");
 
     if (currentState === "TEMPERATURE") {
         socket.on("temperature", handlers.onData);
     } else if (currentState === "ALCOHOL") {
         socket.on("alcohol", handlers.onData);
     }
-
-    socket.on("camera", handlers.onData);
 };
 
 export const useHealthCheck = (): HealthCheckState & {
@@ -59,7 +55,7 @@ export const useHealthCheck = (): HealthCheckState & {
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: "Не определено" },
-        validAlcoholReceived: false, // ✅ Ждём валидных данных
+        isFinalAlcoholStored: false, // ✅ Ensures we only store the first valid value
         secondsLeft: 15,
     });
 
@@ -69,8 +65,6 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
-        hasNavigated: false,
-        sessionCount: 0,
     }).current;
 
     const updateState = useCallback(
@@ -111,7 +105,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 } else if (data.alcoholLevel === "high") {
                     alcoholStatus = "Пьяный";
                 } else {
-                    alcoholStatus = "Ошибка сенсора";
+                    return; // Ignore unrecognized alcohol values
                 }
             }
 
@@ -124,21 +118,27 @@ export const useHealthCheck = (): HealthCheckState & {
                     ? { temperature: Number(data.temperature) || 0 }
                     : prev.temperatureData,
                 alcoholData: prev.currentState === "ALCOHOL"
-                    ? {
-                          alcoholLevel: alcoholStatus,
-                          sensorStatus: data.sensorStatus,
-                          sensorReady: data.sensorReady,
-                      }
+                    ? { alcoholLevel: alcoholStatus }
                     : prev.alcoholData,
-                validAlcoholReceived: prev.currentState === "ALCOHOL" && (alcoholStatus === "Трезвый" || alcoholStatus === "Пьяный"), // ✅ Только если получили нормальные данные
             }));
 
-            if (state.currentState === "ALCOHOL" && !state.validAlcoholReceived && (alcoholStatus === "Трезвый" || alcoholStatus === "Пьяный")) {
-                console.log("✅ Alcohol data received, starting progress bar...");
-                setTimeout(handleComplete, 300);
+            // ✅ If valid alcohol data is received, store it and navigate
+            if (state.currentState === "ALCOHOL" && !state.isFinalAlcoholStored) {
+                console.log("✅ Alcohol data received, saving and navigating...");
+
+                updateState({ isFinalAlcoholStored: true });
+
+                localStorage.setItem("results", JSON.stringify({
+                    temperature: state.temperatureData.temperature,
+                    alcohol: alcoholStatus,
+                }));
+
+                setTimeout(() => {
+                    navigate("/complete-authentication", { state: { success: true } });
+                }, 500); // Small delay to ensure UI updates
             }
         },
-        [handleTimeout]
+        [handleTimeout, navigate]
     );
 
     useEffect(() => {
@@ -182,23 +182,6 @@ export const useHealthCheck = (): HealthCheckState & {
 
             refs.isSubmitting = false;
             return;
-        }
-
-        try {
-            console.log("📡 Sending final data...");
-
-            localStorage.setItem("results", JSON.stringify({
-                temperature: state.temperatureData.temperature,
-                alcohol: state.alcoholData.alcoholLevel,
-                sensorStatus: state.alcoholData.sensorStatus,
-                sensorReady: state.alcoholData.sensorReady,
-            }));
-
-            navigate("/complete-authentication", { state: { success: true } });
-        } catch (error) {
-            console.error("❌ Submission error:", error);
-            toast.error("Ошибка отправки данных. Проверьте соединение.");
-            refs.isSubmitting = false;
         }
     }, [state, navigate, updateState]);
 
