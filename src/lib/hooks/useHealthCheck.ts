@@ -146,7 +146,7 @@ export const useHealthCheck = (): HealthCheckState & {
     }, [listenToTemperatureData, listenToAlcoholData]);
 
     useEffect(() => {
-        console.log("🔥 State Updated:", state);
+        console.log("🔥 State Updated:", JSON.stringify(state, null, 2)); // ✅ Ensure React re-renders
     }, [state]);
 
     const handleComplete = useCallback(async (): Promise<void> => {

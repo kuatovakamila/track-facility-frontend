@@ -49,14 +49,15 @@ export default function HealthCheck() {
                 </AnimatePresence>
 
                 <div className="flex flex-col items-center gap-4">
-                    <LoadingCircle
-                        key={currentState}
-                        icon={state.icon}
-                        value={displayValue}
-                        unit={state.unit}
-                        progress={progress}
-                        onComplete={handleComplete}
-                    />
+				<LoadingCircle
+    key={currentState}
+    icon={state.icon}
+    value={displayValue}
+    unit={state.unit}
+    progress={progress} // ✅ Ensure this updates
+    onComplete={handleComplete}
+/>
+
 
                     {displayValue === "loading" && (
                         <span className="text-sm text-gray-400">
