@@ -6,6 +6,7 @@ import { StateKey } from "../constants";
 // Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
+const ALCOHOL_TIMEOUT = 10000; // New timeout for alcohol measurement
 
 // Define sensor data types
 type SensorData = {
@@ -34,7 +35,7 @@ const configureSocketListeners = (
     socket.off("alcohol");
     socket.off("camera");
 
-    console.log(`🔄 Setting up WebSocket listeners for state: ${currentState}`);
+    console.log(`Setting up WebSocket listeners for state: ${currentState}`);
 
     if (currentState === "TEMPERATURE") {
         socket.on("temperature", handlers.onData);
@@ -61,6 +62,7 @@ export const useHealthCheck = (): HealthCheckState & {
     const refs = useRef({
         socket: null as Socket | null,
         timeout: null as NodeJS.Timeout | null,
+        alcoholTimeout: null as NodeJS.Timeout | null,
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
@@ -80,7 +82,7 @@ export const useHealthCheck = (): HealthCheckState & {
         if (state.currentState === "ALCOHOL") {
             navigate("/");
         }
-    }, []);
+    }, [navigate, state.currentState]);
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
@@ -92,11 +94,23 @@ export const useHealthCheck = (): HealthCheckState & {
             let alcoholStatus = "Не определено";
             if (data.alcoholLevel !== undefined) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
+                
+                // If alcohol data is received, clear timeout and reset hasTimedOut flag
+                clearTimeout(refs.alcoholTimeout!);
+                refs.hasTimedOut = false; // Reset timeout flag for next session
             }
 
             setState((prev) => {
                 const isTemperatureStable = prev.currentState === "TEMPERATURE" && prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
                 const nextState = isTemperatureStable ? "ALCOHOL" : prev.currentState;
+
+                // Start alcohol timeout when transitioning to ALCOHOL state
+                if (isTemperatureStable) {
+                    refs.alcoholTimeout = setTimeout(() => {
+                        console.warn("⏳ Alcohol measurement timed out");
+                        navigate("/");
+                    }, ALCOHOL_TIMEOUT);
+                }
 
                 return {
                     ...prev,
@@ -107,7 +121,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 };
             });
         },
-        [handleTimeout]
+        [handleTimeout, navigate]
     );
 
     useEffect(() => {
