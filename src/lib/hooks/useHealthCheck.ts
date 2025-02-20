@@ -72,21 +72,15 @@ export const useHealthCheck = (): HealthCheckState & {
         []
     );
 
-	const handleTimeout = useCallback(() => {
-		if (refs.hasTimedOut) return;
-		refs.hasTimedOut = true;
-		console.warn("⏳ Timeout reached! Checking last received data time...");
-		
-		console.warn("Last data received:", new Date(refs.lastDataTime).toLocaleTimeString());
-		console.warn("Current time:", new Date().toLocaleTimeString());
-		console.warn("Time since last data (ms):", Date.now() - refs.lastDataTime);
-		
-		if (state.currentState === "ALCOHOL" && Date.now() - refs.lastDataTime >= ALCOHOL_TIMEOUT) {
-			console.warn("⏳ Alcohol detection timeout exceeded, navigating home.");
-			navigate("/");
-		}
-	}, [state.currentState, navigate]);
-	
+    const handleTimeout = useCallback(() => {
+        if (refs.hasTimedOut) return;
+        refs.hasTimedOut = true;
+        console.warn("⏳ Timeout reached");
+        if (state.currentState === "ALCOHOL" && Date.now() - refs.lastDataTime >= ALCOHOL_TIMEOUT) {
+            console.warn("⏳ Alcohol detection timeout exceeded, navigating home");
+            navigate("/");
+        }
+    }, [state.currentState, navigate]);
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
