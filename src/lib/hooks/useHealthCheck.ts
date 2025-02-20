@@ -12,8 +12,8 @@ const TIMEOUT_MESSAGE = "Не удается отследить данные, п
 type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
-    sensorStatus?: string; // ✅ New: Added to track sensor status
-    sensorReady?: boolean; // ✅ New: Added to track sensor readiness
+    sensorStatus?: string;
+    sensorReady?: boolean;
     cameraStatus?: 'failed' | 'success';
 };
 
@@ -22,6 +22,7 @@ type HealthCheckState = {
     stabilityTime: number;
     temperatureData: { temperature: number };
     alcoholData: { alcoholLevel: string; sensorStatus?: string; sensorReady?: boolean };
+    validAlcoholReceived: boolean; // ✅ Флаг, получены ли корректные данные алкоголя
     secondsLeft: number;
 };
 
@@ -35,7 +36,6 @@ const configureSocketListeners = (
         onError: () => void;
     }
 ) => {
-    // ✅ Remove previous listeners before adding new ones
     socket.off("temperature");
     socket.off("alcohol");
     socket.off("camera");
@@ -59,6 +59,7 @@ export const useHealthCheck = (): HealthCheckState & {
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: "Не определено" },
+        validAlcoholReceived: false, // ✅ Ждём валидных данных
         secondsLeft: 15,
     });
 
@@ -69,7 +70,7 @@ export const useHealthCheck = (): HealthCheckState & {
         hasTimedOut: false,
         isSubmitting: false,
         hasNavigated: false,
-        sessionCount: 0, // ✅ Track session count for better flow
+        sessionCount: 0,
     }).current;
 
     const updateState = useCallback(
@@ -102,11 +103,16 @@ export const useHealthCheck = (): HealthCheckState & {
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-            let alcoholStatus = "Не определено";
+            let alcoholStatus = state.alcoholData.alcoholLevel;
+
             if (data.alcoholLevel) {
-                if (data.alcoholLevel === "normal") alcoholStatus = "Трезвый";
-                else if (data.alcoholLevel === "high") alcoholStatus = "Пьяный";
-                else alcoholStatus = "Ошибка сенсора";
+                if (data.alcoholLevel === "normal") {
+                    alcoholStatus = "Трезвый";
+                } else if (data.alcoholLevel === "high") {
+                    alcoholStatus = "Пьяный";
+                } else {
+                    alcoholStatus = "Ошибка сенсора";
+                }
             }
 
             setState((prev) => ({
@@ -120,13 +126,15 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcoholData: prev.currentState === "ALCOHOL"
                     ? {
                           alcoholLevel: alcoholStatus,
-                          sensorStatus: data.sensorStatus, // ✅ Save sensor status
-                          sensorReady: data.sensorReady, // ✅ Save sensor readiness
+                          sensorStatus: data.sensorStatus,
+                          sensorReady: data.sensorReady,
                       }
                     : prev.alcoholData,
+                validAlcoholReceived: prev.currentState === "ALCOHOL" && (alcoholStatus === "Трезвый" || alcoholStatus === "Пьяный"), // ✅ Только если получили нормальные данные
             }));
 
-            if (state.currentState === "ALCOHOL") {
+            if (state.currentState === "ALCOHOL" && !state.validAlcoholReceived && (alcoholStatus === "Трезвый" || alcoholStatus === "Пьяный")) {
+                console.log("✅ Alcohol data received, starting progress bar...");
                 setTimeout(handleComplete, 300);
             }
         },
