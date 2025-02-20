@@ -19,11 +19,11 @@ type HealthCheckState = {
     stabilityTime: number;
     temperatureData: { temperature: number };
     alcoholData: { alcoholLevel: string | null };
-    faceId: string | null;
+    faceId: string | null; // ✅ Preloaded Face ID
     secondsLeft: number;
 };
 
-const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
+// const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
 
 export const useHealthCheck = (): HealthCheckState & {
     handleComplete: () => Promise<void>;
@@ -47,7 +47,7 @@ export const useHealthCheck = (): HealthCheckState & {
         isSubmitting: false,
     }).current;
 
-    // ✅ Preload Face ID once
+    // ✅ Preload Face ID once to avoid delays
     useEffect(() => {
         const storedFaceId = localStorage.getItem("faceId");
         if (storedFaceId) {
@@ -99,7 +99,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 }));
             }
 
-            // ✅ Once `measurementComplete` is received, finalize alcohol level
+            // ✅ If `measurementComplete` is received, finalize alcohol level
             if (data.measurementComplete && (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal")) {
                 console.log("✅ Final alcohol level detected:", data.alcoholLevel);
                 newAlcoholStatus = data.alcoholLevel;
@@ -168,9 +168,9 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
         refs.isSubmitting = true;
-    
+
         console.log("🚀 Checking state sequence...");
-    
+
         // ✅ If alcohol measurement is complete, navigate immediately
         if (state.alcoholData.alcoholLevel === "normal" || state.alcoholData.alcoholLevel === "abnormal") {
             console.log("✅ Alcohol measurement complete, navigating...");
@@ -179,49 +179,47 @@ export const useHealthCheck = (): HealthCheckState & {
             }, 500); // ⏳ Short delay to prevent UI flicker
             return;
         }
-    
-        const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
-        if (currentIndex < STATE_SEQUENCE.length - 1) {
-            updateState({
-                currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0,
-            });
-    
+
+        // ✅ Preloaded Face ID
+        if (!state.faceId) {
+            console.error("❌ Face ID not found");
+            toast.error("Ошибка: Face ID не найден");
             refs.isSubmitting = false;
             return;
         }
-    
-        // ✅ Send final data
+
+        const finalData = {
+            temperatureData: state.temperatureData,
+            alcoholData: state.alcoholData.alcoholLevel ? state.alcoholData : undefined,
+            faceId: state.faceId,
+        };
+
+        console.log("📡 Sending final data:", finalData);
+        const toastId = toast.loading("Отправка данных...");
+
         try {
-            if (!state.faceId) throw new Error("❌ Face ID not found");
-    
-            const finalData = {
-                temperatureData: state.temperatureData,
-                alcoholData: state.alcoholData.alcoholLevel ? state.alcoholData : undefined,
-                faceId: state.faceId,
-            };
-    
-            console.log("📡 Sending final data:", finalData);
             const response = await fetch(`${process.env.VITE_SERVER_URL}/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(finalData),
             });
-    
+
             if (!response.ok) {
                 throw new Error(`❌ Server responded with status: ${response.status}`);
             }
-    
+
             console.log("✅ Submission successful, navigating...");
+            toast.success("Данные успешно отправлены", { id: toastId });
+
             navigate("/complete-authentication", { state: { success: true } });
-    
+
         } catch (error) {
             console.error("❌ Submission error:", error);
-            toast.error("Ошибка отправки данных. Проверьте соединение.");
+            toast.error("Ошибка отправки данных. Проверьте соединение.", { id: toastId });
             refs.isSubmitting = false;
         }
     }, [state, navigate, updateState]);
-    
+
     return {
         ...state,
         handleComplete,
