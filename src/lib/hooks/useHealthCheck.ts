@@ -101,27 +101,28 @@ export const useHealthCheck = (): HealthCheckState & {
                 console.warn("⚠️ Received empty data packet");
                 return;
             }
-
+    
             console.log("📡 Full sensor data received:", data);
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-
-            let alcoholStatus = "Не определено";
+    
+            let alcoholStatus = state.alcoholData.alcoholLevel; // Сохраняем текущее состояние
+    
             if (data.alcoholLevel) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
             }
-
+    
             setState((prev) => {
                 if (prev.currentState === "ALCOHOL") {
-                    console.log("✅ Alcohol data received, instantly completing progress.");
+                    console.log("✅ Alcohol data received, stopping measurement.");
                     return {
                         ...prev,
-                        stabilityTime: MAX_STABILITY_TIME, // ✅ Instantly set progress to max
+                        stabilityTime: MAX_STABILITY_TIME, // Фиксируем progress bar
                         alcoholData: { alcoholLevel: alcoholStatus },
                     };
                 }
-
+    
                 return {
                     ...prev,
                     stabilityTime: prev.currentState === "TEMPERATURE"
@@ -132,14 +133,15 @@ export const useHealthCheck = (): HealthCheckState & {
                         : prev.temperatureData,
                 };
             });
-
-            // 🚀 Immediately trigger handleComplete when alcohol data is received
-            if (state.currentState === "ALCOHOL") {
+    
+            // Если получили alcoholLevel, завершаем процесс
+            if (data.alcoholLevel) {
                 setTimeout(handleComplete, 300);
             }
         },
-        [handleTimeout]
+        [handleTimeout, state.alcoholData.alcoholLevel]
     );
+    
 
     useEffect(() => {
         if (refs.socket) return;
