@@ -22,7 +22,7 @@ type HealthCheckState = {
     secondsLeft: number;
 };
 
-// Configure socket listeners for each state
+// Configure socket listeners
 const configureSocketListeners = (
     socket: Socket,
     currentState: "TEMPERATURE" | "ALCOHOL",
@@ -88,6 +88,7 @@ export const useHealthCheck = () => {
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
+            // ✅ Handle Temperature
             if (state.currentState === "TEMPERATURE" && data.temperature !== undefined) {
                 console.log("🌡 Temperature Data:", data.temperature);
                 updateState({
@@ -101,6 +102,7 @@ export const useHealthCheck = () => {
                 }
             }
 
+            // ✅ Handle Alcohol
             if (state.currentState === "ALCOHOL") {
                 console.log("🍷 Current State: ALCOHOL, checking alcoholLevel...");
 
@@ -135,6 +137,7 @@ export const useHealthCheck = () => {
         [state, updateState, handleTimeout, navigate]
     );
 
+    // ✅ WebSocket Connection & Debugging Logs
     useEffect(() => {
         if (refs.socket) return;
         refs.hasTimedOut = false;
@@ -153,8 +156,9 @@ export const useHealthCheck = () => {
 
         socket.on("disconnect", (reason) => console.warn("⚠️ WebSocket disconnected:", reason));
 
+        // ✅ Debugging: Log all received "alcohol" events
         socket.on("alcohol", (data) => {
-            console.log("📡 Raw Alcohol Data Received:", data);
+            console.log("📡 Raw Alcohol Data Received from WebSocket:", data);
         });
 
         configureSocketListeners(socket, state.currentState, {
@@ -167,6 +171,16 @@ export const useHealthCheck = () => {
             refs.socket = null;
         };
     }, [state.currentState, handleTimeout, handleDataEvent, navigate]);
+
+    // ✅ Force update if alcohol data is missing for too long
+    useEffect(() => {
+        if (state.currentState === "ALCOHOL" && state.alcoholData.alcoholLevel === "Не определено") {
+            setTimeout(() => {
+                console.warn("⚠️ Forcing UI update after 5s: No alcohol data received.");
+                updateState({ alcoholData: { alcoholLevel: "Данные не получены" } });
+            }, 5000);
+        }
+    }, [state.currentState, state.alcoholData.alcoholLevel, updateState]);
 
     return {
         ...state,
