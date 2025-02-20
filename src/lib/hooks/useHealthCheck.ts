@@ -2,16 +2,17 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
+import toast from "react-hot-toast";
 
 // Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
+const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
 
-// Define sensor data types
+// Type definitions
 type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
-    cameraStatus?: 'failed' | 'success';
 };
 
 type HealthCheckState = {
@@ -21,6 +22,8 @@ type HealthCheckState = {
     alcoholData: { alcoholLevel: string };
     secondsLeft: number;
 };
+
+const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
 
 export const useHealthCheck = (): HealthCheckState & {
     handleComplete: () => Promise<void>;
@@ -41,8 +44,7 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
-        hasNavigated: false,
-        pingInterval: null as NodeJS.Timeout | null,
+        alcoholMeasured: false, // ✅ Track alcohol measurement completion
     }).current;
 
     const updateState = useCallback(
@@ -55,106 +57,168 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
-        console.warn("⏳ Timeout reached, but preventing premature navigation");
-    }, []);
+
+        toast.error(TIMEOUT_MESSAGE, {
+            duration: 3000,
+            style: {
+                background: "#272727",
+                color: "#fff",
+                borderRadius: "8px",
+            },
+        });
+        navigate("/");
+    }, [navigate]);
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
-            if (!data) {
-                console.warn("⚠️ Received empty data packet");
-                return;
-            }
-
-            console.log("📡 Received sensor data:", data);
+            if (!data) return;
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-            let alcoholStatus = state.alcoholData.alcoholLevel;
-            if (data.alcoholLevel !== undefined) {
-                console.log(`🍷 Alcohol status received: ${data.alcoholLevel}`);
-                alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
+            let newStabilityTime = state.stabilityTime;
+
+            // ✅ Temperature works as usual
+            if (state.currentState === "TEMPERATURE" && data.temperature) {
+                newStabilityTime = Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME);
             }
 
-            setState((prev) => {
-                const isTemperatureStable =
-                    prev.currentState === "TEMPERATURE" &&
-                    prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
+            let alcoholStatus = state.alcoholData.alcoholLevel;
 
-                const nextState = isTemperatureStable ? "ALCOHOL" : prev.currentState;
+            // ✅ Ensure alcohol only completes when "normal" or "abnormal" received
+            if (state.currentState === "ALCOHOL" && data.alcoholLevel) {
+                console.log("📡 Alcohol Data Received:", data.alcoholLevel);
+                if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
+                    alcoholStatus = data.alcoholLevel;
+                    refs.alcoholMeasured = true; // ✅ Mark alcohol as measured
+                }
+            }
 
-                console.log(`🔄 Transitioning to state: ${nextState}`);
-
-                return {
-                    ...prev,
-                    stabilityTime: isTemperatureStable
-                        ? 0
-                        : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
-                    temperatureData:
-                        data.temperature !== undefined
-                            ? { temperature: Number(data.temperature) || 0 }
-                            : prev.temperatureData,
-                    alcoholData:
-                        data.alcoholLevel !== undefined
-                            ? { alcoholLevel: alcoholStatus }
-                            : prev.alcoholData,
-                    currentState: nextState,
-                };
+            updateState({
+                stabilityTime: newStabilityTime,
+                temperatureData: state.currentState === "TEMPERATURE"
+                    ? { temperature: Number(data.temperature) }
+                    : state.temperatureData,
+                alcoholData: state.currentState === "ALCOHOL"
+                    ? { alcoholLevel: alcoholStatus }
+                    : state.alcoholData,
             });
+
+            // ✅ After alcohol measurement, ensure full spin before completing
+            if (refs.alcoholMeasured) {
+                setTimeout(() => {
+                    handleComplete();
+                }, 4000); // ⏳ Let the loading circle complete its animation
+            }
         },
-        [handleTimeout, state.alcoholData.alcoholLevel]
+        [state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
     );
 
     useEffect(() => {
-        if (!refs.socket) {
-            console.log("🛠️ Initializing WebSocket connection...");
-            refs.socket = io(import.meta.env.VITE_SERVER_URL, {
-                transports: ["websocket"],
-                reconnection: true,
-                reconnectionAttempts: Infinity,
-                reconnectionDelay: 1000,
-            });
+        if (refs.socket) return;
+        refs.hasTimedOut = false;
 
-            refs.socket.on("connect", () => {
-                console.log("✅ WebSocket connected.");
-            });
+        const socket = io(import.meta.env.VITE_SERVER_URL, {
+            transports: ["websocket"],
+            reconnection: true,
+            reconnectionAttempts: 10,
+            reconnectionDelay: 2000,
+        });
 
-            refs.socket.on("disconnect", (reason) => {
-                console.warn("⚠️ WebSocket disconnected:", reason);
-            });
+        socket.on("connect", () => {
+            console.log("✅ WebSocket connected successfully.");
+            refs.socket = socket;
+        });
 
-            // 🔹 Log ALL incoming events
-            refs.socket.onAny((event, data) => {
-                console.log(`📡 Incoming WebSocket event: ${event}`, data);
-            });
+        socket.on("disconnect", (reason) => {
+            console.warn("⚠️ WebSocket disconnected:", reason);
+        });
 
-            // 🔹 Set up main event listeners
-            refs.socket.on("temperature", handleDataEvent);
-            refs.socket.on("alcohol", handleDataEvent);
-            refs.socket.on("camera", handleDataEvent);
-        }
-    }, []);
+        // ✅ Listen for Alcohol Data
+        socket.on("alcohol", (data) => {
+            console.log("📡 Alcohol Data Received:", data);
+            handleDataEvent(data);
+        });
+
+        // ✅ Listen for Temperature Data
+        socket.on("temperature", (data) => {
+            console.log("🌡 Temperature Data Received:", data);
+            handleDataEvent(data);
+        });
+
+        socket.on("error", handleTimeout);
+
+        refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+
+        return () => {
+            socket.disconnect();
+            refs.socket = null;
+        };
+    }, [handleTimeout, handleDataEvent]);
 
     const handleComplete = useCallback(async () => {
-        if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
+        if (refs.isSubmitting) return;
         refs.isSubmitting = true;
 
-        console.log("🚀 Completing health check...");
-
-        // 🔹 Ensure alcohol data is received before navigating
-        if (state.alcoholData.alcoholLevel === "Не определено") {
-            console.warn("🚨 Alcohol data missing, cannot complete!");
+        const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
+        if (currentIndex < STATE_SEQUENCE.length - 1) {
+            updateState({
+                currentState: STATE_SEQUENCE[currentIndex + 1],
+                stabilityTime: 0,
+            });
             refs.isSubmitting = false;
             return;
         }
 
-        navigate("/complete-authentication", { replace: true });
-    }, [navigate, state.currentState, state.alcoholData.alcoholLevel]);
+        // ✅ Ensure alcohol measurement was received before proceeding
+        if (state.currentState === "ALCOHOL" && !refs.alcoholMeasured) {
+            console.warn("⚠️ No valid alcohol data received! Redirecting...");
+            toast.error("Не удалось измерить уровень алкоголя. Попробуйте снова.");
+            navigate("/");
+            return;
+        }
+
+        try {
+            const faceId = localStorage.getItem("faceId");
+            if (!faceId) throw new Error("Face ID not found");
+
+            const response = await fetch(
+                `${import.meta.env.VITE_SERVER_URL}/health`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        temperatureData: state.temperatureData,
+                        alcoholData: state.alcoholData,
+                        faceId,
+                    }),
+                }
+            );
+
+            if (!response.ok) throw new Error("Request failed");
+
+            localStorage.setItem(
+                "results",
+                JSON.stringify({
+                    temperature: state.temperatureData.temperature,
+                    alcohol: state.alcoholData.alcoholLevel,
+                }),
+            );
+
+            console.log("✅ Submission successful, navigating...");
+            navigate("/complete-authentication", { state: { success: true } });
+        } catch (error) {
+            console.error("❌ Submission error:", error);
+            refs.isSubmitting = false;
+        }
+    }, [state, navigate, updateState]);
 
     return {
         ...state,
         handleComplete,
-        setCurrentState: (newState) =>
-            updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
+        setCurrentState: (newState: React.SetStateAction<StateKey>) =>
+            updateState({
+                currentState: typeof newState === "function" ? newState(state.currentState) : newState,
+            }),
     };
 };
