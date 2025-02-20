@@ -71,31 +71,36 @@ export const useHealthCheck = (): HealthCheckState & {
                 console.warn("⚠️ Received empty data packet");
                 return;
             }
-
+    
             console.log("📡 Full sensor data received:", data);
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-
+    
             let newAlcoholStatus = state.alcoholData.alcoholLevel;
             let isValidAlcoholLevel = false;
-
+    
+            // ✅ Если пришло normal или abnormal - фиксируем
             if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
                 newAlcoholStatus = data.alcoholLevel;
                 isValidAlcoholLevel = true;
                 refs.isAlcoholMeasured = true;
+    
+                // ✅ Сохраняем в localStorage сразу
+                localStorage.setItem("alcoholResult", JSON.stringify({ alcoholLevel: newAlcoholStatus }));
+                console.log("💾 Saved to localStorage:", newAlcoholStatus);
             }
-
+    
             setState((prev) => {
                 if (prev.currentState === "ALCOHOL" && isValidAlcoholLevel) {
                     console.log("✅ Alcohol data received, stopping measurement.");
                     return {
                         ...prev,
-                        stabilityTime: MAX_STABILITY_TIME,
+                        stabilityTime: MAX_STABILITY_TIME, // 🔥 Завершаем прогресс-бар
                         alcoholData: { alcoholLevel: newAlcoholStatus },
                     };
                 }
-
+    
                 return {
                     ...prev,
                     stabilityTime: prev.currentState === "TEMPERATURE"
@@ -106,14 +111,18 @@ export const useHealthCheck = (): HealthCheckState & {
                         : prev.temperatureData,
                 };
             });
-
+    
+            // ✅ После завершения прогресса - уходим на complete-authentication
             if (isValidAlcoholLevel) {
-                setTimeout(handleComplete, 300);
+                setTimeout(() => {
+                    console.log("🚀 Navigating to complete-authentication...");
+                    navigate("/complete-authentication", { state: { success: true } });
+                }, 1000); // ✅ Ждем 1 сек, чтобы UI успел показать финальный статус
             }
         },
-        [handleTimeout, state.alcoholData.alcoholLevel]
+        [handleTimeout, state.alcoholData.alcoholLevel, navigate]
     );
-
+    
     useEffect(() => {
         if (refs.socket) {
             refs.socket.off("temperature");
@@ -123,7 +132,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
         refs.hasTimedOut = false;
 
-        const SERVER_URL = process.env.VITE_SERVER_URL || "http://localhost:3001"; // ✅ Теперь `process.env`
+        const SERVER_URL =  "http://localhost:3001"; // ✅ Теперь `process.env`
         console.log("🔗 Connecting to WebSocket:", SERVER_URL);
 
         const socket = io(SERVER_URL, {
