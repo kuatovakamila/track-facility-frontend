@@ -25,7 +25,6 @@ const socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost:3001", {
     reconnectionDelay: 5000,
 });
 
-const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
 
@@ -47,6 +46,15 @@ export const useHealthCheck = (): HealthCheckState & {
         hasTimedOut: false,
     }).current;
 
+    const isMounted = useRef(true);
+
+    useEffect(() => {
+        isMounted.current = true;
+        return () => {
+            isMounted.current = false;
+        };
+    }, []);
+
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
@@ -62,26 +70,18 @@ export const useHealthCheck = (): HealthCheckState & {
     const listenToTemperatureData = useCallback(() => {
         console.log("✅ Listening for temperature via WebSocket...");
 
+        socket.on("connect", () => console.log("✅ WebSocket connected"));
+        socket.on("disconnect", () => console.warn("⚠️ WebSocket disconnected"));
+        
         socket.on("temperature", (data) => {
-            console.log("📡 Received Temperature Data:", data);
+            console.log("📡 Temperature data received:", data);
 
-            if (!data || typeof data.temperature === "undefined") {
-                console.warn("⚠️ No valid temperature data received.");
-                return;
-            }
-
-            setState((prev) => {
-                const updatedStabilityTime = prev.currentState === "TEMPERATURE"
-                    ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
-                    : prev.stabilityTime;
-                
-                console.log("🔥 Updated Stability Time:", updatedStabilityTime);
-                return {
+            if (isMounted.current) {
+                setState((prev) => ({
                     ...prev,
                     temperatureData: { temperature: Number(data.temperature) || 0 },
-                    stabilityTime: updatedStabilityTime,
-                };
-            });
+                }));
+            }
         });
 
         return () => {
@@ -110,11 +110,13 @@ export const useHealthCheck = (): HealthCheckState & {
 
             const isValidAlcoholData = data.sober === 0 || data.drunk === 0;
 
-            setState((prev) => ({
-                ...prev,
-                alcoholData: { alcoholLevel: alcoholStatus },
-                validAlcoholReceived: isValidAlcoholData,
-            }));
+            if (isMounted.current) {
+                setState((prev) => ({
+                    ...prev,
+                    alcoholData: { alcoholLevel: alcoholStatus },
+                    validAlcoholReceived: isValidAlcoholData,
+                }));
+            }
 
             if (isValidAlcoholData) {
                 console.log("✅ Alcohol measurement finalized. Saving and navigating...");
@@ -144,10 +146,6 @@ export const useHealthCheck = (): HealthCheckState & {
             cleanupAlcohol();
         };
     }, [listenToTemperatureData, listenToAlcoholData]);
-
-    useEffect(() => {
-        console.log("🔥 State Updated:", JSON.stringify(state, null, 2)); // ✅ Ensure React re-renders
-    }, [state]);
 
     const handleComplete = useCallback(async (): Promise<void> => {
         return new Promise<void>((resolve) => {
