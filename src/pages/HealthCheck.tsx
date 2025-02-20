@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useHealthCheck } from "../lib/hooks/useHealthCheck";
 import { Header } from "../components/Header";
 import { LoadingCircle } from "../components/LoadingCircle";
@@ -8,7 +9,7 @@ const MAX_STABILITY_TIME = 7;
 
 export default function HealthCheck() {
     const {
-        currentState, // ✅ Now correctly typed
+        currentState,
         stabilityTime,
         temperatureData,
         alcoholData,
@@ -19,20 +20,27 @@ export default function HealthCheck() {
 
     const state = STATES[currentState as "TEMPERATURE" | "ALCOHOL"];
 
+    // Force re-render if updates are missed
+    const [renderTrigger, setRenderTrigger] = useState(0);
+
+    useEffect(() => {
+        setRenderTrigger((prev) => prev + 1);
+    }, [temperatureData.temperature, stabilityTime]);
+
     let displayValue: string | number | null = "loading";
-    if (currentState === "TEMPERATURE" && temperatureData?.temperature !== undefined) {
-        displayValue = Number(temperatureData.temperature).toFixed(1);
-    } else if (currentState === "ALCOHOL" && alcoholData?.alcoholLevel) {
-        displayValue = alcoholData.alcoholLevel;
-        console.log("📡 Alcohol Level Displayed:", displayValue);
+    if (currentState === "TEMPERATURE") {
+        displayValue = temperatureData?.temperature
+            ? Number(temperatureData.temperature).toFixed(1)
+            : "loading";
+    } else if (currentState === "ALCOHOL") {
+        displayValue = alcoholData?.alcoholLevel || "loading";
     }
 
-    // ✅ Fix progress bar logic
     let progress = 0;
-    if (currentState === "TEMPERATURE") {
-        progress = (stabilityTime / MAX_STABILITY_TIME) * 100;
+    if (currentState === "TEMPERATURE" && stabilityTime > 0) {
+        progress = Math.min((stabilityTime / MAX_STABILITY_TIME) * 100, 100);
     } else if (currentState === "ALCOHOL") {
-        progress = validAlcoholReceived ? 100 : 0; // ✅ Only move if valid data is received
+        progress = validAlcoholReceived ? 100 : 0;
     }
 
     return (
@@ -49,16 +57,14 @@ export default function HealthCheck() {
                 </AnimatePresence>
 
                 <div className="flex flex-col items-center gap-4">
-				<LoadingCircle
-    key={currentState}
-    icon={state.icon}
-    value={displayValue}
-    unit={state.unit}
-    progress={progress} // ✅ Ensure this updates
-    onComplete={handleComplete}
-/>
-
-
+                    <LoadingCircle
+                        key={renderTrigger} // ✅ Forces UI re-render
+                        icon={state.icon}
+                        value={displayValue}
+                        unit={state.unit}
+                        progress={progress}
+                        onComplete={handleComplete}
+                    />
                     {displayValue === "loading" && (
                         <span className="text-sm text-gray-400">
                             {`Осталось ${secondsLeft} секунд`}
