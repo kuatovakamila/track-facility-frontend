@@ -18,7 +18,7 @@ export type HealthCheckState = {
 };
 
 // ✅ WebSocket connection (Replace with your backend URL)
-const socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost:3001", {
+const socket = io(import.meta.env.VITE_SERVER_URL || "http:localhost:3001", {
     transports: ["websocket", "polling"],
     secure: true,
     reconnection: true,
@@ -62,24 +62,17 @@ export const useHealthCheck = (): HealthCheckState & {
     const listenToTemperatureData = useCallback(() => {
         console.log("✅ Listening for temperature via WebSocket...");
 
-        const onTemperatureUpdate = (data: any) => {
+        socket.on("temperature", (data) => {
             console.log("📡 Temperature data received:", data);
 
-            setState((prev) => {
-                const newTemp = Number(data.temperature) || 0;
-                if (prev.temperatureData.temperature === newTemp) return prev; // Avoid unnecessary re-renders
-                return {
-                    ...prev,
-                    temperatureData: { temperature: newTemp },
-                };
-            });
-        };
-
-        socket.on("temperature", onTemperatureUpdate);
+            setState((prev) => ({
+                ...prev,
+                temperatureData: { temperature: Number(data.temperature) || 0 },
+            }));
+        });
 
         return () => {
-            console.log("❌ Stopping temperature listener.");
-            socket.off("temperature", onTemperatureUpdate);
+            socket.off("temperature");
         };
     }, []);
 
@@ -128,7 +121,6 @@ export const useHealthCheck = (): HealthCheckState & {
         });
 
         return () => {
-            console.log("❌ Stopping alcohol listener.");
             off(alcoholRef, "value", unsubscribe);
             clearTimeout(refs.timeout!);
         };
