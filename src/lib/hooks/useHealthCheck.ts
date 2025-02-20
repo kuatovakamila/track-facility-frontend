@@ -4,7 +4,6 @@ import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
 
-// Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
@@ -12,7 +11,6 @@ const TIMEOUT_MESSAGE = "Не удается отследить данные, п
 type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
-    cameraStatus?: 'failed' | 'success';
     measurementComplete?: boolean;
 };
 
@@ -21,6 +19,7 @@ type HealthCheckState = {
     stabilityTime: number;
     temperatureData: { temperature: number };
     alcoholData: { alcoholLevel: string | null };
+    faceId: string | null;
     secondsLeft: number;
 };
 
@@ -36,6 +35,7 @@ export const useHealthCheck = (): HealthCheckState & {
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: null },
+        faceId: null, // ✅ Preloaded Face ID
         secondsLeft: 15,
     });
 
@@ -45,8 +45,15 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
-        isAlcoholMeasured: false,
     }).current;
+
+    // ✅ Preload Face ID once
+    useEffect(() => {
+        const storedFaceId = localStorage.getItem("faceId");
+        if (storedFaceId) {
+            setState((prev) => ({ ...prev, faceId: storedFaceId }));
+        }
+    }, []);
 
     const updateState = useCallback(
         <K extends keyof HealthCheckState>(updates: Pick<HealthCheckState, K>) => {
@@ -92,7 +99,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 }));
             }
 
-            // ✅ If `measurementComplete` is received, finalize alcohol level
+            // ✅ Once `measurementComplete` is received, finalize alcohol level
             if (data.measurementComplete && (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal")) {
                 console.log("✅ Final alcohol level detected:", data.alcoholLevel);
                 newAlcoholStatus = data.alcoholLevel;
@@ -120,7 +127,6 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.socket) {
             refs.socket.off("temperature");
             refs.socket.off("alcohol");
-            refs.socket.off("camera");
         }
 
         refs.hasTimedOut = false;
@@ -150,14 +156,12 @@ export const useHealthCheck = (): HealthCheckState & {
 
         socket.on("temperature", handleDataEvent);
         socket.on("alcohol", handleDataEvent);
-        socket.on("camera", handleDataEvent);
 
         refs.socket = socket;
 
         return () => {
             socket.off("temperature");
             socket.off("alcohol");
-            socket.off("camera");
         };
     }, [handleDataEvent, navigate]);
 
@@ -178,18 +182,26 @@ export const useHealthCheck = (): HealthCheckState & {
             return;
         }
 
+        // ✅ Preloaded Face ID
+        if (!state.faceId) {
+            console.error("❌ Face ID not found");
+            toast.error("Ошибка: Face ID не найден");
+            refs.isSubmitting = false;
+            return;
+        }
+
+        const finalData = {
+            temperatureData: state.temperatureData,
+            alcoholData: state.alcoholData.alcoholLevel ? state.alcoholData : undefined,
+            faceId: state.faceId,
+        };
+
+        console.log("📡 Sending final data:", finalData);
+
+        // ✅ Show loading toast while sending
+        const toastId = toast.loading("Отправка данных...");
+
         try {
-            const faceId = localStorage.getItem("faceId");
-            if (!faceId) throw new Error("❌ Face ID not found");
-
-            const finalData = {
-                temperatureData: state.temperatureData,
-                alcoholData: state.alcoholData.alcoholLevel ? state.alcoholData : undefined,
-                faceId,
-            };
-
-            console.log("📡 Sending final data:", finalData);
-
             const response = await fetch(`${process.env.VITE_SERVER_URL}/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -201,6 +213,7 @@ export const useHealthCheck = (): HealthCheckState & {
             }
 
             console.log("✅ Submission successful, navigating to complete authentication...");
+            toast.success("Данные успешно отправлены", { id: toastId });
 
             if (refs.socket) {
                 refs.socket.disconnect();
@@ -211,7 +224,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
         } catch (error) {
             console.error("❌ Submission error:", error);
-            toast.error("Ошибка отправки данных. Проверьте соединение.");
+            toast.error("Ошибка отправки данных. Проверьте соединение.", { id: toastId });
             refs.isSubmitting = false;
         }
     }, [state, navigate, updateState]);
