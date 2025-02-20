@@ -19,10 +19,10 @@ type HealthCheckState = {
     stabilityTime: number;
     temperatureData: { temperature: number };
     alcoholData: { alcoholLevel: string };
-    secondsLeft: number; // ✅ Ensure it's part of the state
+    secondsLeft: number;
 };
 
-// Configure socket listeners
+// Configure socket listeners for each state
 const configureSocketListeners = (
     socket: Socket,
     currentState: "TEMPERATURE" | "ALCOHOL",
@@ -52,7 +52,7 @@ export const useHealthCheck = () => {
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: "Не определено" },
-        secondsLeft: MAX_STABILITY_TIME, // ✅ Initialize secondsLeft
+        secondsLeft: MAX_STABILITY_TIME,
     });
 
     const refs = useRef({
@@ -77,7 +77,7 @@ export const useHealthCheck = () => {
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
-            console.log("📡 Data Received:", data);
+            console.log("📡 Full Data Received:", data);
 
             if (!data) {
                 console.warn("⚠️ Received empty data packet");
@@ -96,29 +96,39 @@ export const useHealthCheck = () => {
                 });
 
                 if (state.stabilityTime + 1 >= MAX_STABILITY_TIME) {
+                    console.log("✅ Switching to ALCOHOL state...");
                     updateState({ currentState: "ALCOHOL", stabilityTime: 0, secondsLeft: MAX_STABILITY_TIME });
                 }
             }
 
-            if (state.currentState === "ALCOHOL" && data.alcoholLevel) {
-                console.log("🍷 Alcohol Level Received:", data.alcoholLevel);
+            if (state.currentState === "ALCOHOL") {
+                console.log("🍷 Current State: ALCOHOL, checking alcoholLevel...");
 
-                const alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
+                if (data.alcoholLevel) {
+                    console.log("🍷 Alcohol Level Received:", data.alcoholLevel);
 
-                updateState({
-                    stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
-                    alcoholData: { alcoholLevel: alcoholStatus },
-                });
+                    const alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
 
-                localStorage.setItem("results", JSON.stringify({
-                    temperature: state.temperatureData.temperature,
-                    alcohol: alcoholStatus,
-                }));
+                    updateState({
+                        stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
+                        alcoholData: { alcoholLevel: alcoholStatus },
+                    });
 
-                if (state.stabilityTime + 1 >= MAX_STABILITY_TIME) {
-                    setTimeout(() => {
-                        navigate("/complete-authentication", { state: { success: true } });
-                    }, 500);
+                    localStorage.setItem("results", JSON.stringify({
+                        temperature: state.temperatureData.temperature,
+                        alcohol: alcoholStatus,
+                    }));
+
+                    console.log("✅ Stored Alcohol Data in LocalStorage:", alcoholStatus);
+
+                    if (state.stabilityTime + 1 >= MAX_STABILITY_TIME) {
+                        console.log("✅ Completed ALCOHOL Check, Navigating...");
+                        setTimeout(() => {
+                            navigate("/complete-authentication", { state: { success: true } });
+                        }, 500);
+                    }
+                } else {
+                    console.warn("⚠️ No alcoholLevel data received from backend!");
                 }
             }
         },
@@ -143,6 +153,10 @@ export const useHealthCheck = () => {
 
         socket.on("disconnect", (reason) => console.warn("⚠️ WebSocket disconnected:", reason));
 
+        socket.on("alcohol", (data) => {
+            console.log("📡 Raw Alcohol Data Received:", data);
+        });
+
         configureSocketListeners(socket, state.currentState, {
             onData: handleDataEvent,
             onError: handleTimeout,
@@ -162,6 +176,7 @@ export const useHealthCheck = () => {
                 return;
             }
 
+            console.log("✅ All states completed, navigating...");
             navigate("/complete-authentication", { state: { success: true } });
         },
     };
