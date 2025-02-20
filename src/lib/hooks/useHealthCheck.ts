@@ -6,7 +6,6 @@ import { StateKey } from "../constants";
 // Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
-const ALCOHOL_TIMEOUT = 7000;
 
 // Define sensor data types
 type SensorData = {
@@ -35,11 +34,12 @@ const configureSocketListeners = (
     socket.off("alcohol");
     socket.off("camera");
 
-    console.log(`🔄 Setting up WebSocket listeners for state: ${currentState}`);
+    console.log(`Setting up WebSocket listeners for state: ${currentState}`);
 
     if (currentState === "TEMPERATURE") {
         socket.on("temperature", handlers.onData);
     } else if (currentState === "ALCOHOL") {
+        console.log("🔄 Listening for alcohol data...");
         socket.on("alcohol", handlers.onData);
     }
 
@@ -78,15 +78,15 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
         console.warn("⏳ Timeout reached");
-        if (state.currentState === "ALCOHOL" && Date.now() - refs.lastDataTime >= ALCOHOL_TIMEOUT) {
-            console.warn("⏳ Alcohol detection timeout exceeded, navigating home");
+        if (state.currentState === "ALCOHOL") {
             navigate("/");
         }
-    }, [state.currentState, navigate]);
+    }, [navigate, state.currentState]);
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             if (!data) return;
+            console.log("📡 Received sensor data:", data);
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
