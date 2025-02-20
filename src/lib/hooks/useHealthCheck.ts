@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { ref, onValue, off } from "firebase/database";
-import { db } from "./firebase"; // ✅ Correct if in the same folder
-
+import { db } from "./firebase"; // ✅ Firebase instance
+import { io } from "socket.io-client"; // ✅ WebSocket client
 import toast from "react-hot-toast";
 
 // ✅ Define type for `StateKey`
@@ -16,6 +16,14 @@ export type HealthCheckState = {
     validAlcoholReceived: boolean;
     secondsLeft: number;
 };
+
+// ✅ WebSocket connection (Replace with your backend URL)
+const socket = io(import.meta.env.VITE_SERVER_URL || "https://your-backend-url.com", {
+    path: "/socket.io/",
+    transports: ["websocket", "polling"],
+    secure: true,
+    reconnection: true,
+});
 
 const SOCKET_TIMEOUT = 15000;
 const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
@@ -51,6 +59,25 @@ export const useHealthCheck = (): HealthCheckState & {
         navigate("/");
     }, [navigate]);
 
+    // ✅ Listen for temperature data via WebSocket
+    const listenToTemperatureData = useCallback(() => {
+        console.log("✅ Listening for temperature via WebSocket...");
+
+        socket.on("temperature", (data) => {
+            console.log("📡 Temperature data received:", data);
+
+            setState((prev) => ({
+                ...prev,
+                temperatureData: { temperature: Number(data.temperature) || 0 },
+            }));
+        });
+
+        return () => {
+            socket.off("temperature");
+        };
+    }, []);
+
+    // ✅ Listen for alcohol data via Firebase
     const listenToAlcoholData = useCallback(() => {
         const alcoholRef = ref(db, "alcohol_value");
         console.log("📡 Listening to Firebase alcohol data...");
@@ -101,9 +128,17 @@ export const useHealthCheck = (): HealthCheckState & {
     }, [navigate, handleTimeout]);
 
     useEffect(() => {
-        const cleanup = listenToAlcoholData();
-        return cleanup;
-    }, [listenToAlcoholData]);
+        // ✅ Start WebSocket temperature listener
+        const cleanupTemperature = listenToTemperatureData();
+
+        // ✅ Start Firebase alcohol listener
+        const cleanupAlcohol = listenToAlcoholData();
+
+        return () => {
+            cleanupTemperature();
+            cleanupAlcohol();
+        };
+    }, [listenToTemperatureData, listenToAlcoholData]);
 
     // ✅ Fix `handleComplete` to return a Promise<void>
     const handleComplete = useCallback(async (): Promise<void> => {
