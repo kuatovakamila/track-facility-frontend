@@ -168,67 +168,60 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
         refs.isSubmitting = true;
-
+    
         console.log("🚀 Checking state sequence...");
-
+    
+        // ✅ If alcohol measurement is complete, navigate immediately
+        if (state.alcoholData.alcoholLevel === "normal" || state.alcoholData.alcoholLevel === "abnormal") {
+            console.log("✅ Alcohol measurement complete, navigating...");
+            setTimeout(() => {
+                navigate("/complete-authentication", { state: { success: true } });
+            }, 500); // ⏳ Short delay to prevent UI flicker
+            return;
+        }
+    
         const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
                 stabilityTime: 0,
             });
-
+    
             refs.isSubmitting = false;
             return;
         }
-
-        // ✅ Preloaded Face ID
-        if (!state.faceId) {
-            console.error("❌ Face ID not found");
-            toast.error("Ошибка: Face ID не найден");
-            refs.isSubmitting = false;
-            return;
-        }
-
-        const finalData = {
-            temperatureData: state.temperatureData,
-            alcoholData: state.alcoholData.alcoholLevel ? state.alcoholData : undefined,
-            faceId: state.faceId,
-        };
-
-        console.log("📡 Sending final data:", finalData);
-
-        // ✅ Show loading toast while sending
-        const toastId = toast.loading("Отправка данных...");
-
+    
+        // ✅ Send final data
         try {
-            const response = await fetch(`http://localhost:3001/health`, {
+            if (!state.faceId) throw new Error("❌ Face ID not found");
+    
+            const finalData = {
+                temperatureData: state.temperatureData,
+                alcoholData: state.alcoholData.alcoholLevel ? state.alcoholData : undefined,
+                faceId: state.faceId,
+            };
+    
+            console.log("📡 Sending final data:", finalData);
+            const response = await fetch(`${process.env.VITE_SERVER_URL}/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(finalData),
             });
-
+    
             if (!response.ok) {
                 throw new Error(`❌ Server responded with status: ${response.status}`);
             }
-
-            console.log("✅ Submission successful, navigating to complete authentication...");
-            toast.success("Данные успешно отправлены", { id: toastId });
-
-            if (refs.socket) {
-                refs.socket.disconnect();
-                refs.socket = null;
-            }
-
+    
+            console.log("✅ Submission successful, navigating...");
             navigate("/complete-authentication", { state: { success: true } });
-
+    
         } catch (error) {
             console.error("❌ Submission error:", error);
-            toast.error("Ошибка отправки данных. Проверьте соединение.", { id: toastId });
+            toast.error("Ошибка отправки данных. Проверьте соединение.");
             refs.isSubmitting = false;
         }
     }, [state, navigate, updateState]);
-
+    
     return {
         ...state,
         handleComplete,
