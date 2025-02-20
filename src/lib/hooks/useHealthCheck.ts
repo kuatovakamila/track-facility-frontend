@@ -40,6 +40,7 @@ const configureSocketListeners = (
     if (currentState === "TEMPERATURE") {
         socket.on("temperature", handlers.onData);
     } else if (currentState === "ALCOHOL") {
+        console.log("🔄 Listening for alcohol data...");
         socket.on("alcohol", handlers.onData);
     }
 
@@ -87,6 +88,7 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             if (!data) return;
+            console.log("📡 Received sensor data:", data);
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
@@ -106,6 +108,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
                 // Start alcohol timeout when transitioning to ALCOHOL state
                 if (isTemperatureStable) {
+                    console.log("⏳ Starting alcohol timeout...");
                     refs.alcoholTimeout = setTimeout(() => {
                         console.warn("⏳ Alcohol measurement timed out");
                         navigate("/");
