@@ -3,14 +3,16 @@ import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
 
+// Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 const ALCOHOL_TIMEOUT = 7000;
 
+// Define sensor data types
 type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
-    cameraStatus?: "failed" | "success";
+    cameraStatus?: 'failed' | 'success';
 };
 
 type HealthCheckState = {
@@ -72,21 +74,15 @@ export const useHealthCheck = (): HealthCheckState & {
         []
     );
 
-	const handleTimeout = useCallback(() => {
-		if (refs.hasTimedOut) return;
-		refs.hasTimedOut = true;
-		console.warn("⏳ Timeout reached! Checking last received data time...");
-		
-		console.warn("Last data received:", new Date(refs.lastDataTime).toLocaleTimeString());
-		console.warn("Current time:", new Date().toLocaleTimeString());
-		console.warn("Time since last data (ms):", Date.now() - refs.lastDataTime);
-		
-		if (state.currentState === "ALCOHOL" && Date.now() - refs.lastDataTime >= ALCOHOL_TIMEOUT) {
-			console.warn("⏳ Alcohol detection timeout exceeded, navigating home.");
-			navigate("/");
-		}
-	}, [state.currentState, navigate]);
-	
+    const handleTimeout = useCallback(() => {
+        if (refs.hasTimedOut) return;
+        refs.hasTimedOut = true;
+        console.warn("⏳ Timeout reached");
+        if (state.currentState === "ALCOHOL" && Date.now() - refs.lastDataTime >= ALCOHOL_TIMEOUT) {
+            console.warn("⏳ Alcohol detection timeout exceeded, navigating home");
+            navigate("/");
+        }
+    }, [state.currentState, navigate]);
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
@@ -99,8 +95,6 @@ export const useHealthCheck = (): HealthCheckState & {
             if (data.alcoholLevel !== undefined) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
             }
-
-            console.log("📡 Received Alcohol Data from Server:", data);
 
             setState((prev) => {
                 const isTemperatureStable = prev.currentState === "TEMPERATURE" && prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
@@ -154,13 +148,16 @@ export const useHealthCheck = (): HealthCheckState & {
 
             if (!response.ok) throw new Error("Request failed");
 
-            navigate("/complete-authentication");
+            navigate("/complete-authentication", { replace: true });
         } catch (error) {
             console.error("Submission error:", error);
             refs.isSubmitting = false;
         }
     }, [state, navigate, refs]);
 
-    return { ...state, handleComplete, setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
-};
+    return {
+        ...state,
+        handleComplete,
+        setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
+    };
 };
