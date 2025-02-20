@@ -19,7 +19,7 @@ type HealthCheckState = {
     stabilityTime: number;
     temperatureData: { temperature: number };
     alcoholData: { alcoholLevel: string | null };
-    faceId: string | null; // ✅ Preloaded Face ID
+    faceId: string | null;
     secondsLeft: number;
 };
 
@@ -35,7 +35,7 @@ export const useHealthCheck = (): HealthCheckState & {
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: null },
-        faceId: null, // ✅ Preloaded Face ID
+        faceId: null,
         secondsLeft: 15,
     });
 
@@ -47,7 +47,7 @@ export const useHealthCheck = (): HealthCheckState & {
         isSubmitting: false,
     }).current;
 
-    // ✅ Preload Face ID once to avoid delays
+    // ✅ Preload Face ID once
     useEffect(() => {
         const storedFaceId = localStorage.getItem("faceId");
         if (storedFaceId) {
@@ -89,23 +89,26 @@ export const useHealthCheck = (): HealthCheckState & {
             let newAlcoholStatus = state.alcoholData.alcoholLevel;
             let newTemperature = state.temperatureData.temperature;
 
-            // ✅ Update temperature progress
+            // ✅ Store temperature but don’t send it immediately
             if (data.temperature) {
                 newTemperature = Number(data.temperature);
                 setState((prev) => ({
                     ...prev,
-                    temperatureData: { temperature: newTemperature },
+                    temperatureData: { temperature: newTemperature }, // Store final value
                     stabilityTime: Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
                 }));
             }
 
-            // ✅ If `measurementComplete` is received, finalize alcohol level
+            // ✅ If alcohol measurement is complete, send all data once
             if (data.measurementComplete && (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal")) {
                 console.log("✅ Final alcohol level detected:", data.alcoholLevel);
                 newAlcoholStatus = data.alcoholLevel;
 
                 // ✅ Save result
-                localStorage.setItem("alcoholResult", JSON.stringify({ alcoholLevel: newAlcoholStatus }));
+                localStorage.setItem("measurementResult", JSON.stringify({
+                    alcoholLevel: newAlcoholStatus,
+                    temperature: newTemperature,
+                }));
 
                 // ✅ Update UI and progress bar
                 setState((prev) => ({
@@ -114,13 +117,11 @@ export const useHealthCheck = (): HealthCheckState & {
                     alcoholData: { alcoholLevel: newAlcoholStatus },
                 }));
 
-                // ✅ Navigate to complete-authentication
-                setTimeout(() => {
-                    navigate("/complete-authentication", { state: { success: true } });
-                }, 1000);
+                // ✅ Send final data once
+                handleComplete(newTemperature, newAlcoholStatus);
             }
         },
-        [handleTimeout, state.currentState, state.alcoholData.alcoholLevel, state.temperatureData.temperature, state.stabilityTime, navigate]
+        [handleTimeout, state.alcoholData.alcoholLevel, state.temperatureData.temperature, state.stabilityTime]
     );
 
     useEffect(() => {
@@ -164,61 +165,55 @@ export const useHealthCheck = (): HealthCheckState & {
             socket.off("alcohol");
         };
     }, [handleDataEvent, navigate]);
-
-    const handleComplete = useCallback(async () => {
+    const handleComplete = useCallback(async (finalTemperature?: number, finalAlcoholLevel?: string) => {
         if (refs.isSubmitting) return;
         refs.isSubmitting = true;
-
-        console.log("🚀 Checking state sequence...");
-
-        // ✅ If alcohol measurement is complete, navigate immediately
-        if (state.alcoholData.alcoholLevel === "normal" || state.alcoholData.alcoholLevel === "abnormal") {
-            console.log("✅ Alcohol measurement complete, navigating...");
-            setTimeout(() => {
-                navigate("/complete-authentication", { state: { success: true } });
-            }, 500); // ⏳ Short delay to prevent UI flicker
-            return;
-        }
-
-        // ✅ Preloaded Face ID
+    
+        console.log("🚀 Sending final temperature & alcohol data together...");
+    
         if (!state.faceId) {
             console.error("❌ Face ID not found");
             toast.error("Ошибка: Face ID не найден");
             refs.isSubmitting = false;
             return;
         }
-
+    
+        // ✅ If parameters are missing, use stored values
+        const finalTemp = finalTemperature ?? state.temperatureData.temperature;
+        const finalAlcohol = finalAlcoholLevel ?? state.alcoholData.alcoholLevel;
+    
         const finalData = {
-            temperatureData: state.temperatureData,
-            alcoholData: state.alcoholData.alcoholLevel ? state.alcoholData : undefined,
+            temperatureData: { temperature: finalTemp },
+            alcoholData: { alcoholLevel: finalAlcohol },
             faceId: state.faceId,
         };
-
+    
         console.log("📡 Sending final data:", finalData);
         const toastId = toast.loading("Отправка данных...");
-
+    
         try {
             const response = await fetch(`${process.env.VITE_SERVER_URL}/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(finalData),
             });
-
+    
             if (!response.ok) {
                 throw new Error(`❌ Server responded with status: ${response.status}`);
             }
-
+    
             console.log("✅ Submission successful, navigating...");
             toast.success("Данные успешно отправлены", { id: toastId });
-
+    
             navigate("/complete-authentication", { state: { success: true } });
-
+    
         } catch (error) {
             console.error("❌ Submission error:", error);
             toast.error("Ошибка отправки данных. Проверьте соединение.", { id: toastId });
             refs.isSubmitting = false;
         }
-    }, [state, navigate, updateState]);
+    }, [state, navigate]);
+    
 
     return {
         ...state,
