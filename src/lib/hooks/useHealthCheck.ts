@@ -46,7 +46,10 @@ const configureSocketListeners = (
 
     if (currentState === "TEMPERATURE") {
         console.log("🟡 Listening for temperature data...");
-        socket.on("temperature", handlers.onData);
+        socket.on("temperature", (data) => {
+            console.log("📡 Temperature Data Received:", data);
+            handlers.onData(data);
+        });
     }
 
     if (currentState === "ALCOHOL") {
@@ -115,49 +118,48 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
             let alcoholStatus = "Не определено";
+            let temperatureValue = state.temperatureData.temperature;
 
-            // ✅ Ensure alcoholLevel is valid before processing
             if (data.alcoholLevel) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
                 console.log("🍷 Processed Alcohol Level:", alcoholStatus);
-            } else {
-                console.warn("⚠️ No alcohol level received, ignoring update.");
-                return; // Prevent proceeding if alcohol data is missing
             }
 
-            setState((prev) => {
-                if (prev.currentState === "ALCOHOL") {
-                    console.log("✅ Alcohol data received, completing progress.");
-                    return {
-                        ...prev,
-                        stabilityTime: MAX_STABILITY_TIME,
-                        alcoholData: { alcoholLevel: alcoholStatus },
-                    };
-                }
+            if (data.temperature) {
+                temperatureValue = Number(data.temperature) || 0;
+                console.log("🌡️ Processed Temperature Data:", temperatureValue);
+            } else {
+                console.warn("⚠️ No temperature data received, ignoring update.");
+            }
 
-                return {
-                    ...prev,
-                    stabilityTime: prev.currentState === "TEMPERATURE"
+            setState((prev) => ({
+                ...prev,
+                stabilityTime:
+                    prev.currentState === "TEMPERATURE"
                         ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
                         : prev.stabilityTime,
-                    temperatureData: prev.currentState === "TEMPERATURE"
-                        ? { temperature: Number(data.temperature) || 0 }
-                        : prev.temperatureData,
-                };
-            });
+                temperatureData: prev.currentState === "TEMPERATURE"
+                    ? { temperature: temperatureValue }
+                    : prev.temperatureData,
+                alcoholData: prev.currentState === "ALCOHOL"
+                    ? { alcoholLevel: alcoholStatus }
+                    : prev.alcoholData,
+            }));
 
             if (state.currentState === "ALCOHOL" && data.alcoholLevel) {
                 setTimeout(handleComplete, 300);
             }
         },
-        [handleTimeout]
+        [state, handleTimeout]
     );
 
     useEffect(() => {
-        if (refs.socket) return;
-        refs.hasTimedOut = false;
+        if (refs.socket) {
+            refs.socket.disconnect();
+            refs.socket = null;
+        }
 
-        console.log("🌍 Connecting to WebSocket...");
+        console.log("🌍 Reconnecting WebSocket for state:", state.currentState);
         const socket = io(import.meta.env.VITE_SERVER_URL, {
             transports: ["websocket"],
             reconnection: true,
@@ -166,12 +168,8 @@ export const useHealthCheck = (): HealthCheckState & {
         });
 
         socket.on("connect", () => {
-            console.log("✅ WebSocket connected successfully.");
+            console.log("✅ WebSocket connected.");
             refs.socket = socket;
-        });
-
-        socket.on("disconnect", (reason) => {
-            console.warn("⚠️ WebSocket disconnected:", reason);
         });
 
         configureSocketListeners(socket, state.currentState, {
@@ -183,13 +181,13 @@ export const useHealthCheck = (): HealthCheckState & {
             socket.disconnect();
             refs.socket = null;
         };
-    }, [state.currentState, handleTimeout, handleDataEvent, navigate]);
+    }, [state.currentState, handleTimeout, handleDataEvent]);
 
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
         refs.isSubmitting = true;
 
-        console.log("🚀 Checking state sequence...");
+        console.log("🚀 Handling completion...");
 
         const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
         if (currentIndex < STATE_SEQUENCE.length - 1) {
@@ -232,7 +230,6 @@ export const useHealthCheck = (): HealthCheckState & {
             }));
 
             refs.socket?.disconnect();
-
             navigate("/complete-authentication", { state: { success: true } });
 
         } catch (error) {
@@ -246,8 +243,8 @@ export const useHealthCheck = (): HealthCheckState & {
         ...state,
         handleComplete,
         setCurrentState: (newState: React.SetStateAction<StateKey>) =>
-            updateState({
-                currentState: typeof newState === "function" ? newState(state.currentState) : newState,
-            }),
+            updateState((prev: HealthCheckState) => ({
+                currentState: typeof newState === "function" ? newState(prev.currentState) : newState,
+            })),
     };
 };
