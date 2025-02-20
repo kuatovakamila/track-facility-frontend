@@ -1,33 +1,45 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { getDatabase, ref, onValue, off } from "firebase/database"; // ✅ Firebase Import
+import { getDatabase, ref, onValue, off } from "firebase/database";
+import { initializeApp } from "firebase/app";
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
-import { initializeApp } from "firebase/app";
 
-// ✅ Firebase Configuration
+// ✅ Load Firebase config from Environment Variables
 const firebaseConfig = {
-    apiKey: "AIzaSyD7rMYKCWP71TJ5t7sl_wdlDzel8aGvMPQ",
-    authDomain: "automated-monitoring-solutions.firebaseapp.com",
-    databaseURL: "https://automated-monitoring-solutions-default-rtdb.firebaseio.com",
-    projectId: "automated-monitoring-solutions",
-    storageBucket: "automated-monitoring-solutions.firebasestorage.app",
-    messagingSenderId: "404798850665",
-    appId: "1:404798850665:web:10e8f83154e4a9a5e144f8",
-    measurementId: "G-LEG72SFNW6"
-  };
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+    apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+    authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+    databaseURL: process.env.REACT_APP_FIREBASE_DATABASE_URL,
+    projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.REACT_APP_FIREBASE_APP_ID,
+    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
+};
 
-// Constants
+// ✅ Firebase initialization (prevent multiple initializations)
+const firebaseAppRef = useRef<any>(null);
+const dbRef = useRef<any>(null);
+
+const useFirebase = () => {
+    useEffect(() => {
+        if (!firebaseAppRef.current) {
+            firebaseAppRef.current = initializeApp(firebaseConfig);
+            dbRef.current = getDatabase(firebaseAppRef.current);
+        }
+    }, []);
+    return dbRef.current;
+};
+
+// ✅ Constants
 const MAX_STABILITY_TIME = 7;
-const SOCKET_TIMEOUT = 15000; // ✅ Timeout before redirecting to home
+const SOCKET_TIMEOUT = 15000;
 const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
 
 type SensorData = {
     power?: number;
-    sober?: number; // ✅ If 0, user is sober
-    drunk?: number; // ✅ If 0, user is drunk
+    sober?: number;
+    drunk?: number;
     relay?: number;
     ready?: number;
     status?: string;
@@ -38,7 +50,7 @@ type HealthCheckState = {
     stabilityTime: number;
     temperatureData: { temperature: number };
     alcoholData: { alcoholLevel: string };
-    validAlcoholReceived: boolean; // ✅ Tracks if valid alcohol data is received
+    validAlcoholReceived: boolean;
     secondsLeft: number;
 };
 
@@ -49,12 +61,14 @@ export const useHealthCheck = (): HealthCheckState & {
     setCurrentState: React.Dispatch<React.SetStateAction<StateKey>>;
 } => {
     const navigate = useNavigate();
+    const db = useFirebase();
+
     const [state, setState] = useState<HealthCheckState>({
         currentState: "TEMPERATURE",
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: "Не определено" },
-        validAlcoholReceived: false, // ✅ Initially false
+        validAlcoholReceived: false,
         secondsLeft: 15,
     });
 
@@ -64,13 +78,17 @@ export const useHealthCheck = (): HealthCheckState & {
         hasTimedOut: false,
         isSubmitting: false,
     }).current;
-
     const updateState = useCallback(
-        <K extends keyof HealthCheckState>(updates: Pick<HealthCheckState, K>) => {
-            setState((prev) => ({ ...prev, ...updates }));
+        (updates: Partial<HealthCheckState> | ((prevState: HealthCheckState) => Partial<HealthCheckState>)) => {
+            setState((prev) => ({
+                ...prev,
+                ...(typeof updates === "function" ? updates(prev) : updates),
+            }));
         },
         []
     );
+    
+
 
     // ✅ Handles timeout and redirects the user to home
     const handleTimeout = useCallback(() => {
@@ -81,11 +99,14 @@ export const useHealthCheck = (): HealthCheckState & {
             duration: 3000,
             style: { background: "#272727", color: "#fff", borderRadius: "8px" },
         });
-        navigate("/"); // ✅ Redirects user to home page
+
+        navigate("/");
     }, [navigate]);
 
     const listenToAlcoholData = useCallback(() => {
-        const alcoholRef = ref(db, "alcohol_value"); // ✅ Path to alcohol data in Firebase
+        if (!db) return; // ✅ Ensure Firebase is initialized
+
+        const alcoholRef = ref(db, "alcohol_value");
         console.log("📡 Listening to Firebase alcohol data...");
 
         // ✅ Set a timeout to navigate home if no valid alcohol data is received
@@ -100,13 +121,9 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("📡 Alcohol data received from Firebase:", data);
 
-            // ✅ Check if valid alcohol data is received
             let alcoholStatus = "Не определено";
-            if (data.sober === 0) {
-                alcoholStatus = "Трезвый"; // ✅ Sober
-            } else if (data.drunk === 0) {
-                alcoholStatus = "Пьяный"; // ✅ Drunk
-            }
+            if (data.sober === 0) alcoholStatus = "Трезвый";
+            else if (data.drunk === 0) alcoholStatus = "Пьяный";
 
             const isValidAlcoholData = data.sober === 0 || data.drunk === 0;
 
@@ -118,40 +135,37 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcoholData: prev.currentState === "ALCOHOL"
                     ? { alcoholLevel: alcoholStatus }
                     : prev.alcoholData,
-                validAlcoholReceived: isValidAlcoholData, // ✅ Enables progress bar when valid data is received
+                validAlcoholReceived: isValidAlcoholData,
             }));
 
-            // ✅ If valid alcohol data is received, store and navigate
-            if (isValidAlcoholData && !state.validAlcoholReceived) {
+            if (isValidAlcoholData) {
                 console.log("✅ Alcohol measurement finalized. Saving and navigating...");
 
-                updateState({ validAlcoholReceived: true });
+                updateState((prev) => ({ ...prev, validAlcoholReceived: true }));
 
                 localStorage.setItem("results", JSON.stringify({
                     temperature: state.temperatureData.temperature,
                     alcohol: alcoholStatus,
                 }));
 
-                // ✅ Clear timeout since valid data was received
-                clearTimeout(refs.timeout!);
+                if (refs.timeout) clearTimeout(refs.timeout);
 
                 setTimeout(() => {
                     navigate("/complete-authentication", { state: { success: true } });
-                }, 500); // Small delay to ensure UI updates
+                }, 500);
             }
         });
 
         return () => {
-            off(alcoholRef, "value", unsubscribe); // ✅ Cleanup listener
-            clearTimeout(refs.timeout!); // ✅ Cleanup timeout when unmounting
+            off(alcoholRef, "value", unsubscribe);
+            if (refs.timeout) clearTimeout(refs.timeout);
         };
-    }, [navigate, updateState, handleTimeout]);
+    }, [db, navigate, updateState, handleTimeout]);
 
     useEffect(() => {
-        // ✅ Start listening to alcohol data when in ALCOHOL state
         if (state.currentState === "ALCOHOL") {
             const cleanup = listenToAlcoholData();
-            return cleanup; // ✅ Cleanup Firebase listener when component unmounts
+            return cleanup;
         }
     }, [state.currentState, listenToAlcoholData]);
 
