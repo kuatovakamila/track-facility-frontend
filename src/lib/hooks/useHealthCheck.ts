@@ -34,7 +34,6 @@ const configureSocketListeners = (
         onError: () => void;
     }
 ) => {
-    // Don't remove all listeners (it may delete other event listeners)
     socket.off("connect_error");
     socket.off("error");
     socket.off("temperature");
@@ -52,9 +51,15 @@ const configureSocketListeners = (
         socket.on("alcohol", handlers.onData);
     }
 
-    // 🔥 Ensure CAMERA event is always registered
+    // 📡 Камера теперь отправляет только cameraStatus
     socket.on("camera", (data) => {
         console.log("📡 Camera Data Received:", data);
+        if (data.cameraStatus === "failed") {
+            toast.error("⚠️ Face ID не распознан, попробуйте снова.", {
+                duration: 3000,
+                style: { background: "#ff4d4d", color: "#fff", borderRadius: "8px" },
+            });
+        }
         handlers.onData(data);
     });
 };
@@ -103,34 +108,19 @@ export const useHealthCheck = (): HealthCheckState & {
         navigate("/");
     }, [navigate]);
 
-    // Handle incoming data from WebSocket
     const handleDataEvent = useCallback(
         (data: SensorData) => {
-            if (!data) {
-                console.warn("⚠️ Received empty data packet");
-                return;
-            }
-
             console.log("📡 Full sensor data received:", data);
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-
+    
             let alcoholStatus = "Не определено";
             if (data.alcoholLevel) {
-                console.log("📡 Raw alcohol data received:", data.alcoholLevel);
-
-                if (data.alcoholLevel === "normal") {
-                    alcoholStatus = "Трезвый";
-                    console.log("✅ User is Трезвый (Sober)!");
-                } else if (data.alcoholLevel === "abnormal") {
-                    alcoholStatus = "Пьяный";
-                    console.log("🚨 User is Пьяный (Drunk)!");
-                }
-            } else {
-                console.warn("⚠️ No alcohol data received from backend!");
+                alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
+                console.log(`📡 Alcohol Status Updated: ${alcoholStatus}`);
             }
-
+    
             updateState({
                 stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
                 temperatureData: state.currentState === "TEMPERATURE"
@@ -141,8 +131,9 @@ export const useHealthCheck = (): HealthCheckState & {
                     : state.alcoholData,
             });
         },
-        [state.currentState, state.stabilityTime, state.temperatureData, state.alcoholData, updateState, handleTimeout]
+        [state.currentState, state.stabilityTime, updateState, handleTimeout]
     );
+    
 	useEffect(() => {
 		if (refs.socket) return;
 		refs.hasTimedOut = false;
