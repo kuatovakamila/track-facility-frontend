@@ -44,7 +44,7 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
-        lastAlcoholLevel: "Не определено",
+        isAlcoholMeasured: false, // ✅ Добавили флаг, чтобы предотвратить повторное измерение
     }).current;
 
     const updateState = useCallback(
@@ -77,11 +77,11 @@ export const useHealthCheck = (): HealthCheckState & {
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-            let alcoholStatus = refs.lastAlcoholLevel;
+            let alcoholStatus = state.alcoholData.alcoholLevel;
 
-            if (data.alcoholLevel) {
+            if (data.alcoholLevel && !refs.isAlcoholMeasured) { // ✅ Избегаем повторного измерения
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
-                refs.lastAlcoholLevel = alcoholStatus; // ✅ Сохраняем состояние
+                refs.isAlcoholMeasured = true; // ✅ Фиксируем, что измерение завершено
             }
 
             setState((prev) => {
@@ -105,11 +105,11 @@ export const useHealthCheck = (): HealthCheckState & {
                 };
             });
 
-            if (data.alcoholLevel) {
+            if (data.alcoholLevel && refs.isAlcoholMeasured) { // ✅ Завершаем процесс
                 setTimeout(handleComplete, 300);
             }
         },
-        [handleTimeout]
+        [handleTimeout, state.alcoholData.alcoholLevel]
     );
 
     useEffect(() => {
