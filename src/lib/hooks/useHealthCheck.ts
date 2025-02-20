@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { ref, onValue, off } from "firebase/database";
-import { db } from "/Users/zadyraahmetdinova/Downloads/track-facility-frontend/src/lib/hooks/firebase.ts";
+import { db } from "./firebase"; // ✅ Correct if in the same folder
+
 import toast from "react-hot-toast";
 
 // ✅ Define type for `StateKey`
