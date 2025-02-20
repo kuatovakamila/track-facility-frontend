@@ -18,11 +18,11 @@ export type HealthCheckState = {
 };
 
 // ✅ WebSocket connection (Replace with your backend URL)
-const socket = io(import.meta.env.VITE_SERVER_URL || "https://your-backend-url.com", {
-    path: "/socket.io/",
-    transports: ["websocket", "polling"],
-    secure: true,
+const socket = io(import.meta.env.VITE_SERVER_URL || "http:localhost:3001", {
+    transports: ["websocket"],
     reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 5000,
 });
 
 const SOCKET_TIMEOUT = 15000;
