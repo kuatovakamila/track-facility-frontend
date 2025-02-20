@@ -7,7 +7,6 @@ import { StateKey } from "../constants";
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 
-
 // Define sensor data types
 type SensorData = {
     temperature?: string;
@@ -21,38 +20,6 @@ type HealthCheckState = {
     temperatureData: { temperature: number };
     alcoholData: { alcoholLevel: string };
     secondsLeft: number;
-};
-
-const configureSocketListeners = (
-    socket: Socket,
-    currentState: StateKey,
-    handlers: {
-        onData: (data: SensorData) => void;
-        onError: () => void;
-    }
-) => {
-    socket.off("temperature");
-    socket.off("alcohol");
-    socket.off("camera");
-
-    console.log(`🔄 Setting up WebSocket listeners for state: ${currentState}`);
-
-    if (currentState === "TEMPERATURE") {
-        socket.on("temperature", (data) => {
-            console.log("🔥 Temperature event received:", data);
-            handlers.onData(data);
-        });
-    } else if (currentState === "ALCOHOL") {
-        socket.on("alcohol", (data) => {
-            console.log("🍷 Alcohol event received:", data);
-            handlers.onData(data);
-        });
-    }
-
-    socket.on("camera", (data) => {
-        console.log("📷 Camera event received:", data);
-        handlers.onData(data);
-    });
 };
 
 export const useHealthCheck = (): HealthCheckState & {
@@ -103,33 +70,38 @@ export const useHealthCheck = (): HealthCheckState & {
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-            let alcoholStatus = "Не определено";
+            let alcoholStatus = state.alcoholData.alcoholLevel;
             if (data.alcoholLevel !== undefined) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
             }
 
             setState((prev) => {
-                const isTemperatureStable = prev.currentState === "TEMPERATURE" && prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
+                const isTemperatureStable =
+                    prev.currentState === "TEMPERATURE" &&
+                    prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
+
                 const nextState = isTemperatureStable ? "ALCOHOL" : prev.currentState;
 
                 console.log(`🔄 Transitioning to state: ${nextState}`);
 
                 return {
                     ...prev,
-                    stabilityTime: isTemperatureStable ? 0 : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
+                    stabilityTime: isTemperatureStable
+                        ? 0
+                        : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
                     temperatureData:
-                        prev.currentState === "TEMPERATURE"
+                        data.temperature !== undefined
                             ? { temperature: Number(data.temperature) || 0 }
                             : prev.temperatureData,
                     alcoholData:
-                        prev.currentState === "ALCOHOL"
+                        data.alcoholLevel !== undefined
                             ? { alcoholLevel: alcoholStatus }
                             : prev.alcoholData,
                     currentState: nextState,
                 };
             });
         },
-        [handleTimeout]
+        [handleTimeout, state.alcoholData.alcoholLevel]
     );
 
     useEffect(() => {
@@ -151,21 +123,39 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.socket.on("disconnect", (reason) => {
                 console.warn("⚠️ WebSocket disconnected, attempting to reconnect:", reason);
             });
-        }
 
-        configureSocketListeners(refs.socket, state.currentState, {
-            onData: handleDataEvent,
-            onError: handleTimeout,
-        });
-    }, [state.currentState, handleTimeout, handleDataEvent]);
+            refs.socket.on("temperature", (data) => {
+                console.log("🔥 Temperature event received:", data);
+                handleDataEvent(data);
+            });
+
+            refs.socket.on("alcohol", (data) => {
+                console.log("🍷 Alcohol event received:", data);
+                handleDataEvent(data);
+            });
+
+            refs.socket.on("camera", (data) => {
+                console.log("📷 Camera event received:", data);
+                handleDataEvent(data);
+            });
+        }
+    }, [state.currentState, handleDataEvent]);
 
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
         refs.isSubmitting = true;
 
         console.log("🚀 Completing health check...");
+
+        // Ensure the data is actually received before navigating
+        if (state.alcoholData.alcoholLevel === "Не определено") {
+            console.warn("🚨 Alcohol data missing, cannot complete!");
+            refs.isSubmitting = false;
+            return;
+        }
+
         navigate("/complete-authentication", { replace: true });
-    }, [navigate, state.currentState]);
+    }, [navigate, state.currentState, state.alcoholData.alcoholLevel]);
 
     return {
         ...state,
