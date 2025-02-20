@@ -11,9 +11,10 @@ const TIMEOUT_MESSAGE = "Не удается отследить данные, п
 
 type SensorData = {
     temperature?: string;
-    alcoholLevel?: string;
+    alcoholLevel?: string; // ✅ "normal" | "abnormal" | "error"
     sensorStatus?: string;
     sensorReady?: boolean;
+    measurementComplete?: boolean; // ✅ New field from backend
 };
 
 type HealthCheckState = {
@@ -102,7 +103,7 @@ export const useHealthCheck = (): HealthCheckState & {
             if (data.alcoholLevel) {
                 if (data.alcoholLevel === "normal") {
                     alcoholStatus = "Трезвый";
-                } else if (data.alcoholLevel === "high") {
+                } else if (data.alcoholLevel === "abnormal") {
                     alcoholStatus = "Пьяный";
                 } else {
                     return; // Ignore unrecognized alcohol values
@@ -122,9 +123,9 @@ export const useHealthCheck = (): HealthCheckState & {
                     : prev.alcoholData,
             }));
 
-            // ✅ If valid alcohol data is received, store it and navigate
-            if (state.currentState === "ALCOHOL" && !state.isFinalAlcoholStored) {
-                console.log("✅ Alcohol data received, saving and navigating...");
+            // ✅ Only trigger progress & navigation when `measurementComplete` is true
+            if (!state.isFinalAlcoholStored && data.measurementComplete) {
+                console.log("✅ Alcohol measurement finalized. Saving and navigating...");
 
                 updateState({ isFinalAlcoholStored: true });
 
