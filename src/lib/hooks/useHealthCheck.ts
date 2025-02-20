@@ -33,6 +33,8 @@ const configureSocketListeners = (
         onError: () => void;
     }
 ) => {
+    console.log("🔄 Configuring WebSocket listeners...");
+
     socket.off("connect_error");
     socket.off("error");
     socket.off("temperature");
@@ -43,10 +45,12 @@ const configureSocketListeners = (
     socket.on("error", handlers.onError);
 
     if (currentState === "TEMPERATURE") {
+        console.log("🟡 Listening for temperature data...");
         socket.on("temperature", handlers.onData);
     }
 
     if (currentState === "ALCOHOL") {
+        console.log("🟡 Listening for alcohol data...");
         socket.on("alcohol", handlers.onData);
     }
 
@@ -113,11 +117,11 @@ export const useHealthCheck = (): HealthCheckState & {
             }
 
             setState((prev) => {
-                if (prev.currentState === "ALCOHOL") {
-                    console.log("✅ Alcohol data received, instantly completing progress.");
+                if (prev.currentState === "ALCOHOL" && data.alcoholLevel) {
+                    console.log("✅ Alcohol data received, completing progress.");
                     return {
                         ...prev,
-                        stabilityTime: MAX_STABILITY_TIME, // ✅ Instantly set progress to max
+                        stabilityTime: MAX_STABILITY_TIME,
                         alcoholData: { alcoholLevel: alcoholStatus },
                     };
                 }
@@ -133,8 +137,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 };
             });
 
-            // 🚀 Immediately trigger handleComplete when alcohol data is received
-            if (state.currentState === "ALCOHOL") {
+            if (state.currentState === "ALCOHOL" && data.alcoholLevel) {
                 setTimeout(handleComplete, 300);
             }
         },
@@ -145,6 +148,7 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.socket) return;
         refs.hasTimedOut = false;
 
+        console.log("🌍 Connecting to WebSocket...");
         const socket = io(import.meta.env.VITE_SERVER_URL, {
             transports: ["websocket"],
             reconnection: true,
@@ -182,7 +186,7 @@ export const useHealthCheck = (): HealthCheckState & {
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0, // ✅ Reset stability time
+                stabilityTime: 0,
             });
 
             refs.isSubmitting = false;
@@ -237,4 +241,4 @@ export const useHealthCheck = (): HealthCheckState & {
                 currentState: typeof newState === "function" ? newState(state.currentState) : newState,
             }),
     };
-}; 
+};
