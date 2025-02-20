@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 // Константы
 const MAX_STABILITY_TIME = 7;
 const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
-const SERVER_URL = import.meta.env.VITE_SERVER_URL;
+
 
 // Типы данных
 type HealthCheckState = {
@@ -43,7 +43,7 @@ export const useHealthCheck = (): HealthCheckState & {
     useEffect(() => {
         if (refs.socket) return;
 
-        const socket = io(SERVER_URL, {
+        const socket = io('http://localhost:3001', {
             transports: ["websocket"],
             reconnection: true,
             reconnectionAttempts: 10,
@@ -141,7 +141,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("✅ Отправляем данные...");
 
-            const response = await fetch(`${SERVER_URL}/health`, {
+            const response = await fetch(`http://localhost:3001/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
