@@ -12,6 +12,8 @@ type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
     cameraStatus?: "failed" | "success";
+    sensorStatus?: string; // "on" | "off"
+    sensorReady?: boolean; // true | false
 };
 
 type HealthCheckState = {
@@ -100,9 +102,22 @@ export const useHealthCheck = (): HealthCheckState & {
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
+            // ✅ Validate and handle alcohol data properly
             let alcoholStatus = "Не определено";
             if (data.alcoholLevel) {
-                alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
+                if (data.alcoholLevel === "normal") {
+                    alcoholStatus = "Трезвый";
+                } else if (data.alcoholLevel === "abnormal") {
+                    alcoholStatus = "Пьяный";
+                }
+            } else {
+                console.warn("❌ Alcohol data missing from payload");
+            }
+
+            // ✅ Ensure sensor is ready before updating UI
+            if (data.sensorStatus === "off" || data.sensorReady === false) {
+                console.warn("⏳ Sensor not ready, waiting...");
+                return; // Do not update state if sensor is off or not ready
             }
 
             setState((prev) => ({
@@ -117,6 +132,7 @@ export const useHealthCheck = (): HealthCheckState & {
             }));
 
             if (state.currentState === "ALCOHOL") {
+                console.log("✅ Alcohol data received, proceeding to next step.");
                 setTimeout(handleComplete, 300);
             }
         },
@@ -180,11 +196,6 @@ export const useHealthCheck = (): HealthCheckState & {
             localStorage.setItem("results", JSON.stringify({
                 temperature: state.temperatureData.temperature,
                 alcohol: state.alcoholData.alcoholLevel,
-            }));
-
-            setState((prev) => ({
-                ...prev,
-                alcoholData: { alcoholLevel: state.alcoholData.alcoholLevel },
             }));
 
             setTimeout(() => {
