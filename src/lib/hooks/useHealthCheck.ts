@@ -69,25 +69,33 @@ export const useHealthCheck = (): HealthCheckState & {
 
     const listenToTemperatureData = useCallback(() => {
         console.log("✅ Listening for temperature via WebSocket...");
-
-        socket.on("connect", () => console.log("✅ WebSocket connected"));
-        socket.on("disconnect", () => console.warn("⚠️ WebSocket disconnected"));
-        
+    
         socket.on("temperature", (data) => {
             console.log("📡 Temperature data received:", data);
-
-            if (isMounted.current) {
-                setState((prev) => ({
-                    ...prev,
-                    temperatureData: { temperature: Number(data.temperature) || 0 },
-                }));
-            }
+    
+            setState((prev) => {
+                const newTemperature = Number(data.temperature) || 0;
+    
+                if (prev.temperatureData.temperature !== newTemperature) {
+                    console.log("🔥 Updating temperature state:", newTemperature);
+    
+                    // ✅ Store in localStorage for debugging
+                    localStorage.setItem("latestTemperature", JSON.stringify(newTemperature));
+    
+                    return {
+                        ...prev,
+                        temperatureData: { temperature: newTemperature },
+                    };
+                }
+                return prev;
+            });
         });
-
+    
         return () => {
             socket.off("temperature");
         };
     }, []);
+    
 
     const listenToAlcoholData = useCallback(() => {
         const alcoholRef = ref(db, "/alcohol_value");
