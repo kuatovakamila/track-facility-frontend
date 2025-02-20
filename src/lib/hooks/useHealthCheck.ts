@@ -34,20 +34,24 @@ const configureSocketListeners = (
         onError: () => void;
     }
 ) => {
-    // ✅ REMOVE ONLY THE PREVIOUS STATE'S LISTENERS TO AVOID UNEXPECTED REMOVALS
-    if (currentState === "TEMPERATURE") {
-        socket.off("alcohol"); // Remove alcohol listener if switching from ALCOHOL
-        socket.on("temperature", handlers.onData);
-    } else if (currentState === "ALCOHOL") {
-        socket.off("temperature"); // Remove temperature listener if switching from TEMPERATURE
-        socket.on("alcohol", handlers.onData);
-    }
+    console.log(`🔄 Configuring WebSocket Listeners for: ${currentState}`);
+
+    // Ensure only relevant listeners are active
+    socket.off("temperature");
+    socket.off("alcohol");
+    socket.off("camera");
 
     socket.on("camera", handlers.onData);
 
-    // ✅ Log all incoming events for debugging
+    if (currentState === "TEMPERATURE") {
+        socket.on("temperature", handlers.onData);
+    } else if (currentState === "ALCOHOL") {
+        socket.on("alcohol", handlers.onData);
+    }
+
+    // ✅ Debugging: Log all incoming WebSocket events
     socket.onAny((event, data) => {
-        console.log(`📡 Received event: ${event}`, data);
+        console.log(`📡 WebSocket Event Received: ${event}`, data);
     });
 };
 
@@ -71,7 +75,7 @@ export const useHealthCheck = (): HealthCheckState & {
         hasTimedOut: false,
         isSubmitting: false,
         hasNavigated: false,
-        sessionCount: 0, // ✅ Track session count for debugging
+        sessionCount: 0,
     }).current;
 
     const updateState = useCallback(
@@ -89,55 +93,49 @@ export const useHealthCheck = (): HealthCheckState & {
         navigate("/");
     }, [navigate]);
 
-    const handleDataEvent = useCallback(
-        (data: SensorData) => {
-            console.log("📡 Full Sensor Data Received:", JSON.stringify(data));
+    const handleDataEvent = useCallback((data: SensorData) => {
+        console.log("📡 FULL SENSOR DATA RECEIVED:", JSON.stringify(data));
 
-            if (!data || typeof data !== "object") {
-                console.warn("⚠️ Received invalid data:", data);
-                return;
-            }
+        if (!data || typeof data !== "object") {
+            console.warn("⚠️ Invalid data format:", data);
+            return;
+        }
 
-            refs.lastDataTime = Date.now();
-            clearTimeout(refs.timeout!);
-            refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+        refs.lastDataTime = Date.now();
+        clearTimeout(refs.timeout!);
+        refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-            // ✅ Validate and handle alcohol data properly
-            let alcoholStatus = "Не определено";
-            if (data.alcoholLevel) {
-                if (data.alcoholLevel === "normal") {
-                    alcoholStatus = "Трезвый";
-                } else if (data.alcoholLevel === "abnormal") {
-                    alcoholStatus = "Пьяный";
-                }
-            } else {
-                console.warn("❌ Alcohol data missing from payload");
-            }
+        let alcoholStatus = "Не определено";
 
-            // ✅ Ensure sensor is ready before updating UI
-            if (data.sensorStatus === "off" || data.sensorReady === false) {
-                console.warn("⏳ Sensor not ready, waiting...");
-                return; // Do not update state if sensor is off or not ready
-            }
+        if (data.hasOwnProperty("alcoholLevel")) {
+            console.log("✅ Alcohol data detected:", data.alcoholLevel);
+            if (data.alcoholLevel === "normal") alcoholStatus = "Трезвый";
+            if (data.alcoholLevel === "abnormal") alcoholStatus = "Пьяный";
+        } else {
+            console.warn("❌ Alcohol data missing from payload");
+        }
 
-            setState((prev) => ({
-                ...prev,
-                alcoholData: prev.currentState === "ALCOHOL" ? { alcoholLevel: alcoholStatus } : prev.alcoholData,
-                temperatureData: prev.currentState === "TEMPERATURE" && data.temperature
-                    ? { temperature: Number(data.temperature) || 0 }
-                    : prev.temperatureData,
-                stabilityTime: prev.currentState === "TEMPERATURE"
-                    ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
-                    : prev.stabilityTime,
-            }));
+        // Log sensor status and readiness
+        console.log(`🛠️ Sensor Status: ${data.sensorStatus}, Ready: ${data.sensorReady}`);
 
-            if (state.currentState === "ALCOHOL") {
-                console.log("✅ Alcohol data received, proceeding to next step.");
-                setTimeout(handleComplete, 300);
-            }
-        },
-        [handleTimeout]
-    );
+        if (data.sensorStatus === "off" || data.sensorReady === false) {
+            console.warn("⏳ Sensor is not ready, waiting...");
+            return;
+        }
+
+        setState((prev) => ({
+            ...prev,
+            alcoholData: prev.currentState === "ALCOHOL" ? { alcoholLevel: alcoholStatus } : prev.alcoholData,
+            stabilityTime: prev.currentState === "TEMPERATURE"
+                ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
+                : prev.stabilityTime,
+        }));
+
+        if (state.currentState === "ALCOHOL") {
+            console.log("✅ Alcohol data received, proceeding to next step.");
+            setTimeout(handleComplete, 300);
+        }
+    }, [handleTimeout]);
 
     useEffect(() => {
         if (!refs.socket) {
@@ -203,7 +201,6 @@ export const useHealthCheck = (): HealthCheckState & {
                 navigate("/complete-authentication", { state: { success: true } });
             }, 500);
 
-            // ✅ Delay disconnect to ensure all data is processed
             setTimeout(() => {
                 console.log("🛑 Now disconnecting WebSocket after authentication completes...");
                 refs.socket?.disconnect();
