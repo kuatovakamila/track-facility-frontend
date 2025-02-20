@@ -19,7 +19,7 @@ type HealthCheckState = {
     currentState: StateKey;
     stabilityTime: number;
     temperatureData: { temperature: number };
-    alcoholData: { alcoholLevel: string | undefined };
+    alcoholData: { alcoholLevel: string | null }; // ✅ `null`, а не `undefined`
     secondsLeft: number;
 };
 
@@ -34,18 +34,18 @@ export const useHealthCheck = (): HealthCheckState & {
         currentState: "TEMPERATURE",
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
-        alcoholData: { alcoholLevel: undefined }, // 🆕 alcoholLevel изначально undefined
+        alcoholData: { alcoholLevel: null }, // ✅ null вместо undefined
         secondsLeft: 15,
     });
+
     const refs = useRef({
         socket: null as Socket | null,
         timeout: null as NodeJS.Timeout | null,
         lastDataTime: Date.now(),
         hasTimedOut: false,
-        isSubmitting: false, // 🆕 Добавляем, чтобы избежать ошибки
-        isAlcoholMeasured: false, // Проверка, чтобы не перезаписывать `alcoholLevel`
+        isSubmitting: false, // ✅ Исправлена ошибка отсутствия isSubmitting
+        isAlcoholMeasured: false,
     }).current;
-    
 
     const updateState = useCallback(
         <K extends keyof HealthCheckState>(updates: Pick<HealthCheckState, K>) => {
@@ -77,13 +77,13 @@ export const useHealthCheck = (): HealthCheckState & {
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-            let newAlcoholStatus = state.alcoholData.alcoholLevel; // 🆕 Текущее состояние
+            let newAlcoholStatus = state.alcoholData.alcoholLevel;
             let isValidAlcoholLevel = false;
 
             if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
                 newAlcoholStatus = data.alcoholLevel;
                 isValidAlcoholLevel = true;
-                refs.isAlcoholMeasured = true; // 🆕 Зафиксировали, что данные получены
+                refs.isAlcoholMeasured = true;
             }
 
             setState((prev) => {
@@ -91,8 +91,8 @@ export const useHealthCheck = (): HealthCheckState & {
                     console.log("✅ Alcohol data received, stopping measurement.");
                     return {
                         ...prev,
-                        stabilityTime: MAX_STABILITY_TIME, // 🔥 Прогресс сразу заполняется
-                        alcoholData: { alcoholLevel: newAlcoholStatus }, // 🔥 `alcoholLevel` фиксируется
+                        stabilityTime: MAX_STABILITY_TIME,
+                        alcoholData: { alcoholLevel: newAlcoholStatus },
                     };
                 }
 
@@ -123,7 +123,10 @@ export const useHealthCheck = (): HealthCheckState & {
 
         refs.hasTimedOut = false;
 
-        const socket = io(import.meta.env.VITE_SERVER_URL, {
+        const SERVER_URL = process.env.VITE_SERVER_URL || "https://default-backend.com"; // ✅ Теперь `process.env`
+        console.log("🔗 Connecting to WebSocket:", SERVER_URL);
+
+        const socket = io(SERVER_URL, {
             transports: ["websocket"],
             reconnection: true,
             reconnectionAttempts: 20,
@@ -137,6 +140,10 @@ export const useHealthCheck = (): HealthCheckState & {
 
         socket.on("disconnect", (reason) => {
             console.warn("⚠️ WebSocket disconnected:", reason);
+        });
+
+        socket.on("connect_error", (err) => {
+            console.error("❌ WebSocket connection error:", err);
         });
 
         socket.on("temperature", handleDataEvent);
@@ -175,13 +182,15 @@ export const useHealthCheck = (): HealthCheckState & {
 
             const finalData = {
                 temperatureData: state.temperatureData,
-                alcoholData: state.alcoholData,
+                alcoholData: state.alcoholData.alcoholLevel
+                    ? state.alcoholData
+                    : undefined, // ✅ Не отправляем undefined
                 faceId,
             };
 
             console.log("📡 Sending final data:", finalData);
 
-            const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/health`, {
+            const response = await fetch(`${process.env.VITE_SERVER_URL}/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(finalData),
@@ -195,10 +204,14 @@ export const useHealthCheck = (): HealthCheckState & {
 
             localStorage.setItem("results", JSON.stringify({
                 temperature: state.temperatureData.temperature,
-                alcohol: state.alcoholData.alcoholLevel,
+                alcohol: state.alcoholData.alcoholLevel ?? "undefined",
             }));
 
-            refs.socket?.disconnect();
+            if (refs.socket) {
+                refs.socket.disconnect();
+                refs.socket = null;
+            }
+
             navigate("/complete-authentication", { state: { success: true } });
 
         } catch (error) {
@@ -217,4 +230,3 @@ export const useHealthCheck = (): HealthCheckState & {
             }),
     };
 };
-
