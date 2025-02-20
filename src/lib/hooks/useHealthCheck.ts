@@ -9,18 +9,19 @@ const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 const TIMEOUT_MESSAGE = "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
 
-// Type definitions
 type SensorData = {
     temperature?: string;
     alcoholLevel?: string;
-	cameraStatus?: 'failed' | 'success'
+    sensorStatus?: string; // ✅ New: Added to track sensor status
+    sensorReady?: boolean; // ✅ New: Added to track sensor readiness
+    cameraStatus?: 'failed' | 'success';
 };
 
 type HealthCheckState = {
     currentState: StateKey;
     stabilityTime: number;
     temperatureData: { temperature: number };
-    alcoholData: { alcoholLevel: string };
+    alcoholData: { alcoholLevel: string; sensorStatus?: string; sensorReady?: boolean };
     secondsLeft: number;
 };
 
@@ -34,36 +35,19 @@ const configureSocketListeners = (
         onError: () => void;
     }
 ) => {
-    socket.off("connect_error");
-    socket.off("error");
+    // ✅ Remove previous listeners before adding new ones
     socket.off("temperature");
     socket.off("alcohol");
     socket.off("camera");
 
-    socket.on("connect_error", handlers.onError);
-    socket.on("error", handlers.onError);
-
     if (currentState === "TEMPERATURE") {
         socket.on("temperature", handlers.onData);
-    }
-
-    if (currentState === "ALCOHOL") {
+    } else if (currentState === "ALCOHOL") {
         socket.on("alcohol", handlers.onData);
     }
 
-    // 📡 Камера теперь отправляет только cameraStatus
-    socket.on("camera", (data) => {
-        console.log("📡 Camera Data Received:", data);
-        if (data.cameraStatus === "failed") {
-            toast.error("⚠️ Face ID не распознан, попробуйте снова.", {
-                duration: 3000,
-                style: { background: "#ff4d4d", color: "#fff", borderRadius: "8px" },
-            });
-        }
-        handlers.onData(data);
-    });
+    socket.on("camera", handlers.onData);
 };
-
 
 export const useHealthCheck = (): HealthCheckState & {
     handleComplete: () => Promise<void>;
@@ -84,6 +68,8 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
+        hasNavigated: false,
+        sessionCount: 0, // ✅ Track session count for better flow
     }).current;
 
     const updateState = useCallback(
@@ -99,148 +85,83 @@ export const useHealthCheck = (): HealthCheckState & {
 
         toast.error(TIMEOUT_MESSAGE, {
             duration: 3000,
-            style: {
-                background: "#272727",
-                color: "#fff",
-                borderRadius: "8px",
-            },
+            style: { background: "#272727", color: "#fff", borderRadius: "8px" },
         });
         navigate("/");
     }, [navigate]);
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
-            console.log("📡 Full sensor data received:", data);
+            if (!data) {
+                console.warn("⚠️ Received empty data packet");
+                return;
+            }
+
+            console.log("📡 Sensor data received:", data);
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-    
+
             let alcoholStatus = "Не определено";
             if (data.alcoholLevel) {
-                alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
-                console.log(`📡 Alcohol Status Updated: ${alcoholStatus}`);
+                if (data.alcoholLevel === "normal") alcoholStatus = "Трезвый";
+                else if (data.alcoholLevel === "high") alcoholStatus = "Пьяный";
+                else alcoholStatus = "Ошибка сенсора";
             }
-    
-            updateState({
-                stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
-                temperatureData: state.currentState === "TEMPERATURE"
+
+            setState((prev) => ({
+                ...prev,
+                stabilityTime: prev.currentState === "TEMPERATURE"
+                    ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
+                    : prev.stabilityTime,
+                temperatureData: prev.currentState === "TEMPERATURE"
                     ? { temperature: Number(data.temperature) || 0 }
-                    : state.temperatureData,
-                alcoholData: state.currentState === "ALCOHOL"
-                    ? { alcoholLevel: alcoholStatus }
-                    : state.alcoholData,
-            });
+                    : prev.temperatureData,
+                alcoholData: prev.currentState === "ALCOHOL"
+                    ? {
+                          alcoholLevel: alcoholStatus,
+                          sensorStatus: data.sensorStatus, // ✅ Save sensor status
+                          sensorReady: data.sensorReady, // ✅ Save sensor readiness
+                      }
+                    : prev.alcoholData,
+            }));
+
+            if (state.currentState === "ALCOHOL") {
+                setTimeout(handleComplete, 300);
+            }
         },
-        [state.currentState, state.stabilityTime, updateState, handleTimeout]
+        [handleTimeout]
     );
-    
-	useEffect(() => {
-		if (refs.socket) return;
-		refs.hasTimedOut = false;
-	
-		const socket = io(import.meta.env.VITE_SERVER_URL, {
-			transports: ["websocket"],
-			reconnection: true,
-			reconnectionAttempts: 20,
-			reconnectionDelay: 10000,
-		});
-	
-		socket.on("connect", () => {
-			console.log("✅ WebSocket connected successfully.");
-			refs.socket = socket;
-		});
-	
-		socket.on("disconnect", (reason) => {
-			console.warn("⚠️ WebSocket disconnected:", reason);
-		});
-	
-		configureSocketListeners(socket, state.currentState, {
-			onData: (data: SensorData) => {
-				console.log("📡 Data Received:", data);
-		
-				// ✅ Проверяем, существует ли state.currentState
-				const { currentState, temperatureData } = state;
-		
-				if (!currentState) {
-					console.warn("⚠️ currentState is undefined, cannot process data.");
-					return;
-				}
-		
-				// ✅ Обрабатываем состояние FACE_ID (проверяем cameraStatus)
-				if (currentState === "TEMPERATURE" && data.cameraStatus) {
-					console.log("📷 Camera Event Received:", data);
-		
-					if (data.cameraStatus === "failed") {
-						console.warn("❌ Camera Capture Failed, retrying Face ID.");
-		
-						// ✅ Останавливаем навигацию на экран температуры
-						updateState({ currentState: "TEMPERATURE" });
-		
-						// ✅ Показываем пользователю уведомление о повторной попытке Face ID
-						toast.error("⚠️ Face ID failed. Please try again.", {
-							duration: 3000,
-							style: { background: "#ff4d4d", color: "#fff", borderRadius: "8px" },
-						});
-		
-						return; // ✅ Прерываем выполнение, чтобы избежать ненужных переходов
-					}
-		
-					if (data.cameraStatus === "success") {
-						console.log("✅ Face ID recognized, moving to temperature check...");
-		
-						updateState({ currentState: "TEMPERATURE" });
-		
-						setTimeout(() => {
-							navigate("/temperature-check");
-						}, 500); // Небольшая задержка для корректного обновления состояния перед переходом
-					}
-				}
-		
-				// ✅ Обрабатываем TEMPERATURE
-				if (currentState === "TEMPERATURE" && typeof data.temperature === "number") {
-					updateState({
-						temperatureData: { temperature: data.temperature },
-					});
-				}
-		
-				// ✅ Обрабатываем ALCOHOL
-				if (currentState === "ALCOHOL" && typeof data.alcoholLevel === "string") {
-					console.log("📡 Alcohol Level:", data.alcoholLevel);
-		
-					const alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
-		
-					// ✅ Обновляем localStorage
-					const newResults = {
-						temperature: temperatureData.temperature,
-						alcohol: alcoholStatus,
-					};
-		
-					localStorage.setItem("results", JSON.stringify(newResults));
-					console.log("✅ Updated LocalStorage:", newResults);
-		
-					setTimeout(() => {
-						navigate("/complete-authentication", { state: { success: true } });
-					}, 500);
-				}
-		
-				handleDataEvent(data);
-			},
-			onError: handleTimeout,
-		});
-		
-		
-		
-		
-	
-		return () => {
-			socket.disconnect(); // Only disconnect when component unmounts
-			refs.socket = null;
-		};
-	}, [state.currentState, handleTimeout, handleDataEvent, navigate]);
-	
-	
-	
-    // Handle completion and state transitions
+
+    useEffect(() => {
+        if (!refs.socket) {
+            refs.socket = io(import.meta.env.VITE_SERVER_URL, {
+                transports: ["websocket"],
+                reconnection: true,
+                reconnectionAttempts: 20,
+                reconnectionDelay: 10000,
+            });
+
+            refs.socket.on("connect", () => {
+                console.log("✅ WebSocket connected.");
+            });
+
+            refs.socket.on("disconnect", (reason) => {
+                console.warn("⚠️ WebSocket disconnected:", reason);
+                refs.socket = null;
+            });
+        }
+
+        configureSocketListeners(refs.socket, state.currentState, {
+            onData: handleDataEvent,
+            onError: handleTimeout,
+        });
+
+        return () => {
+            console.log("🛑 Not cleaning up event listeners until authentication is fully done...");
+        };
+    }, [state.currentState, handleTimeout, handleDataEvent]);
+
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
         refs.isSubmitting = true;
@@ -248,64 +169,35 @@ export const useHealthCheck = (): HealthCheckState & {
         console.log("🚀 Checking state sequence...");
 
         const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
-        console.log("🔍 Current Index:", currentIndex, "State:", state.currentState);
-
         if (currentIndex < STATE_SEQUENCE.length - 1) {
-            console.log("⏭️ Moving to next state:", STATE_SEQUENCE[currentIndex + 1]);
-
-            updateState({
-                currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0,
-            });
+            updateState({ currentState: STATE_SEQUENCE[currentIndex + 1], stabilityTime: 0 });
 
             refs.isSubmitting = false;
             return;
         }
 
         try {
-            refs.socket?.disconnect();
-            const faceId = localStorage.getItem("faceId");
-            if (!faceId) throw new Error("Face ID not found");
+            console.log("📡 Sending final data...");
 
-            console.log("✅ All states completed, submitting final data...");
-
-            const response = await fetch(
-                `${import.meta.env.VITE_SERVER_URL}/health`,
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        temperatureData: state.temperatureData,
-                        alcoholData: state.alcoholData,
-                        faceId,
-                    }),
-                }
-            );
-
-            if (!response.ok) throw new Error("Request failed");
-
-            console.log("✅ Submission successful, navigating to complete authentication...");
-            localStorage.setItem(
-                "results",
-                JSON.stringify({
-                    temperature: state.temperatureData.temperature,
-                    alcohol: state.alcoholData.alcoholLevel,
-                })
-            );
+            localStorage.setItem("results", JSON.stringify({
+                temperature: state.temperatureData.temperature,
+                alcohol: state.alcoholData.alcoholLevel,
+                sensorStatus: state.alcoholData.sensorStatus,
+                sensorReady: state.alcoholData.sensorReady,
+            }));
 
             navigate("/complete-authentication", { state: { success: true } });
         } catch (error) {
             console.error("❌ Submission error:", error);
+            toast.error("Ошибка отправки данных. Проверьте соединение.");
             refs.isSubmitting = false;
         }
-    }, [state, navigate, refs, updateState]);
+    }, [state, navigate, updateState]);
 
     return {
         ...state,
         handleComplete,
-        setCurrentState: (newState: React.SetStateAction<StateKey>) =>
-            updateState({
-                currentState: typeof newState === "function" ? newState(state.currentState) : newState,
-            }),
+        setCurrentState: (newState) =>
+            updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
     };
 };
