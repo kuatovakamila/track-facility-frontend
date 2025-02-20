@@ -19,7 +19,7 @@ type HealthCheckState = {
     currentState: StateKey;
     stabilityTime: number;
     temperatureData: { temperature: number };
-    alcoholData: { alcoholLevel: string };
+    alcoholData: { alcoholLevel: string | undefined };
     secondsLeft: number;
 };
 
@@ -34,18 +34,18 @@ export const useHealthCheck = (): HealthCheckState & {
         currentState: "TEMPERATURE",
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
-        alcoholData: { alcoholLevel: "Не определено" },
+        alcoholData: { alcoholLevel: undefined }, // 🆕 alcoholLevel изначально undefined
         secondsLeft: 15,
     });
-
     const refs = useRef({
         socket: null as Socket | null,
         timeout: null as NodeJS.Timeout | null,
         lastDataTime: Date.now(),
         hasTimedOut: false,
-        isSubmitting: false,
-        isAlcoholMeasured: false, // ✅ Добавили флаг, чтобы предотвратить повторное измерение
+        isSubmitting: false, // 🆕 Добавляем, чтобы избежать ошибки
+        isAlcoholMeasured: false, // Проверка, чтобы не перезаписывать `alcoholLevel`
     }).current;
+    
 
     const updateState = useCallback(
         <K extends keyof HealthCheckState>(updates: Pick<HealthCheckState, K>) => {
@@ -77,20 +77,22 @@ export const useHealthCheck = (): HealthCheckState & {
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
-            let alcoholStatus = state.alcoholData.alcoholLevel;
+            let newAlcoholStatus = state.alcoholData.alcoholLevel; // 🆕 Текущее состояние
+            let isValidAlcoholLevel = false;
 
-            if (data.alcoholLevel && !refs.isAlcoholMeasured) { // ✅ Избегаем повторного измерения
-                alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
-                refs.isAlcoholMeasured = true; // ✅ Фиксируем, что измерение завершено
+            if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
+                newAlcoholStatus = data.alcoholLevel;
+                isValidAlcoholLevel = true;
+                refs.isAlcoholMeasured = true; // 🆕 Зафиксировали, что данные получены
             }
 
             setState((prev) => {
-                if (prev.currentState === "ALCOHOL") {
+                if (prev.currentState === "ALCOHOL" && isValidAlcoholLevel) {
                     console.log("✅ Alcohol data received, stopping measurement.");
                     return {
                         ...prev,
-                        stabilityTime: MAX_STABILITY_TIME,
-                        alcoholData: { alcoholLevel: alcoholStatus },
+                        stabilityTime: MAX_STABILITY_TIME, // 🔥 Прогресс сразу заполняется
+                        alcoholData: { alcoholLevel: newAlcoholStatus }, // 🔥 `alcoholLevel` фиксируется
                     };
                 }
 
@@ -105,7 +107,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 };
             });
 
-            if (data.alcoholLevel && refs.isAlcoholMeasured) { // ✅ Завершаем процесс
+            if (isValidAlcoholLevel) {
                 setTimeout(handleComplete, 300);
             }
         },
@@ -215,3 +217,4 @@ export const useHealthCheck = (): HealthCheckState & {
             }),
     };
 };
+
