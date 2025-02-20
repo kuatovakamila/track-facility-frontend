@@ -17,7 +17,7 @@ export const useRaspberryCamera = ({ onFrame }: UseCameraProps) => {
 
 		async function setupCamera() {
 			try {
-				const socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3000');
+				const socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001');
 				socketRef.current = socket;
 
 				socket.on("connect", () => {
