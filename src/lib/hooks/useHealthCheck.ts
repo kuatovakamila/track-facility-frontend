@@ -51,7 +51,10 @@ const configureSocketListeners = (
 
     if (currentState === "ALCOHOL") {
         console.log("🟡 Listening for alcohol data...");
-        socket.on("alcohol", handlers.onData);
+        socket.on("alcohol", (data) => {
+            console.log("📡 Alcohol Data Received:", data);
+            handlers.onData(data);
+        });
     }
 
     socket.on("camera", (data) => {
@@ -112,12 +115,18 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
             let alcoholStatus = "Не определено";
+
+            // ✅ Ensure alcoholLevel is valid before processing
             if (data.alcoholLevel) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
+                console.log("🍷 Processed Alcohol Level:", alcoholStatus);
+            } else {
+                console.warn("⚠️ No alcohol level received, ignoring update.");
+                return; // Prevent proceeding if alcohol data is missing
             }
 
             setState((prev) => {
-                if (prev.currentState === "ALCOHOL" && data.alcoholLevel) {
+                if (prev.currentState === "ALCOHOL") {
                     console.log("✅ Alcohol data received, completing progress.");
                     return {
                         ...prev,
