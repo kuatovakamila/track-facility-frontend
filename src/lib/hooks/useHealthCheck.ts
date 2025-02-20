@@ -18,7 +18,7 @@ export type HealthCheckState = {
 };
 
 // ✅ WebSocket connection (Replace with your backend URL)
-const socket = io(import.meta.env.VITE_SERVER_URL || "http:localhost:3001", {
+const socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost:3001", {
     transports: ["websocket"],
     reconnection: true,
     reconnectionAttempts: 10,
@@ -46,7 +46,6 @@ export const useHealthCheck = (): HealthCheckState & {
         hasTimedOut: false,
     }).current;
 
-    // ✅ Handle timeout - redirect user to home if no valid alcohol data
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
@@ -59,7 +58,6 @@ export const useHealthCheck = (): HealthCheckState & {
         navigate("/");
     }, [navigate]);
 
-    // ✅ Listen for temperature data via WebSocket
     const listenToTemperatureData = useCallback(() => {
         console.log("✅ Listening for temperature via WebSocket...");
 
@@ -77,20 +75,19 @@ export const useHealthCheck = (): HealthCheckState & {
         };
     }, []);
 
-    // ✅ Listen for alcohol data via Firebase
     const listenToAlcoholData = useCallback(() => {
-        const alcoholRef = ref(db, "alcohol_value");
+        const alcoholRef = ref(db, "/alcohol_value");
         console.log("📡 Listening to Firebase alcohol data...");
 
         refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
         const unsubscribe = onValue(alcoholRef, (snapshot) => {
-            const data = snapshot.val();
-            if (!data) {
-                console.warn("⚠️ No alcohol data received from Firebase.");
+            if (!snapshot.exists()) {
+                console.warn("⚠️ No data at '/alcohol_value' path.");
                 return;
             }
 
+            const data = snapshot.val();
             console.log("📡 Alcohol data received from Firebase:", data);
 
             let alcoholStatus = "Не определено";
@@ -114,10 +111,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 }));
 
                 clearTimeout(refs.timeout!);
-
-                setTimeout(() => {
-                    navigate("/complete-authentication");
-                }, 500);
+                setTimeout(() => navigate("/complete-authentication"), 500);
             }
         });
 
@@ -128,10 +122,7 @@ export const useHealthCheck = (): HealthCheckState & {
     }, [navigate, handleTimeout]);
 
     useEffect(() => {
-        // ✅ Start WebSocket temperature listener
         const cleanupTemperature = listenToTemperatureData();
-
-        // ✅ Start Firebase alcohol listener
         const cleanupAlcohol = listenToAlcoholData();
 
         return () => {
@@ -140,7 +131,6 @@ export const useHealthCheck = (): HealthCheckState & {
         };
     }, [listenToTemperatureData, listenToAlcoholData]);
 
-    // ✅ Fix `handleComplete` to return a Promise<void>
     const handleComplete = useCallback(async (): Promise<void> => {
         return new Promise<void>((resolve) => {
             listenToAlcoholData();
