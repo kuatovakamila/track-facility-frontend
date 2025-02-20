@@ -143,7 +143,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
         refs.hasTimedOut = false;
 
-        const SERVER_URL = process.env.VITE_SERVER_URL || "https://default-backend.com";
+        const SERVER_URL = process.env.VITE_SERVER_URL || "http://localhost:3001";
         console.log("🔗 Connecting to WebSocket:", SERVER_URL);
 
         const socket = io(SERVER_URL, {
