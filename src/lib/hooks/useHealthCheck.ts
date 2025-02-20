@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
@@ -7,6 +6,7 @@ import { StateKey } from "../constants";
 // Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
+const ALCOHOL_TIMEOUT = 10000; // New timeout for alcohol measurement
 
 // Define sensor data types
 type SensorData = {
@@ -40,6 +40,7 @@ const configureSocketListeners = (
     if (currentState === "TEMPERATURE") {
         socket.on("temperature", handlers.onData);
     } else if (currentState === "ALCOHOL") {
+        console.log("🔄 Listening for alcohol data...");
         socket.on("alcohol", handlers.onData);
     }
 
@@ -62,6 +63,7 @@ export const useHealthCheck = (): HealthCheckState & {
     const refs = useRef({
         socket: null as Socket | null,
         timeout: null as NodeJS.Timeout | null,
+        alcoholTimeout: null as NodeJS.Timeout | null,
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
@@ -81,11 +83,12 @@ export const useHealthCheck = (): HealthCheckState & {
         if (state.currentState === "ALCOHOL") {
             navigate("/");
         }
-    }, []);
+    }, [navigate, state.currentState]);
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             if (!data) return;
+            console.log("📡 Received sensor data:", data);
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
@@ -93,11 +96,24 @@ export const useHealthCheck = (): HealthCheckState & {
             let alcoholStatus = "Не определено";
             if (data.alcoholLevel !== undefined) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
+                
+                // If alcohol data is received, clear timeout and reset hasTimedOut flag
+                clearTimeout(refs.alcoholTimeout!);
+                refs.hasTimedOut = false; // Reset timeout flag for next session
             }
 
             setState((prev) => {
                 const isTemperatureStable = prev.currentState === "TEMPERATURE" && prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
                 const nextState = isTemperatureStable ? "ALCOHOL" : prev.currentState;
+
+                // Start alcohol timeout when transitioning to ALCOHOL state
+                if (isTemperatureStable) {
+                    console.log("⏳ Starting alcohol timeout...");
+                    refs.alcoholTimeout = setTimeout(() => {
+                        console.warn("⏳ Alcohol measurement timed out");
+                        navigate("/");
+                    }, ALCOHOL_TIMEOUT);
+                }
 
                 return {
                     ...prev,
@@ -108,7 +124,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 };
             });
         },
-        [handleTimeout]
+        [handleTimeout, navigate]
     );
 
     useEffect(() => {
@@ -159,4 +175,4 @@ export const useHealthCheck = (): HealthCheckState & {
         handleComplete,
         setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
     };
-}; 
+};
