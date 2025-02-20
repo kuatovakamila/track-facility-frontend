@@ -201,14 +201,14 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("📡 Sending final data:", finalData);
 
-            const response = await fetch(${import.meta.env.VITE_SERVER_URL}/health, {
+            const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(finalData),
             });
 
             if (!response.ok) {
-                throw new Error(❌ Server responded with status: ${response.status});
+                throw new Error(`❌ Server responded with status: ${response.status}`);
             }
 
             console.log("✅ Submission successful, navigating to complete authentication...");
@@ -237,4 +237,4 @@ export const useHealthCheck = (): HealthCheckState & {
                 currentState: typeof newState === "function" ? newState(state.currentState) : newState,
             }),
     };
-}; 
+};
