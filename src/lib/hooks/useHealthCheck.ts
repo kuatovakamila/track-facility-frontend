@@ -78,50 +78,42 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
     
             let newAlcoholStatus = state.alcoholData.alcoholLevel;
-            let isValidAlcoholLevel = false;
     
-            // ✅ Если пришло normal или abnormal - фиксируем
-            if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
-                newAlcoholStatus = data.alcoholLevel;
-                isValidAlcoholLevel = true;
-                refs.isAlcoholMeasured = true;
-    
-                // ✅ Сохраняем в localStorage сразу
-                localStorage.setItem("alcoholResult", JSON.stringify({ alcoholLevel: newAlcoholStatus }));
-                console.log("💾 Saved to localStorage:", newAlcoholStatus);
+            // ✅ Если получили `unknown`, продолжаем слушать
+            if (data.alcoholLevel === "unknown" || !data.alcoholLevel) {
+                console.log("⏳ Waiting for valid alcoholLevel...");
+                return;
             }
     
-            setState((prev) => {
-                if (prev.currentState === "ALCOHOL" && isValidAlcoholLevel) {
-                    console.log("✅ Alcohol data received, stopping measurement.");
-                    return {
-                        ...prev,
-                        stabilityTime: MAX_STABILITY_TIME, // 🔥 Завершаем прогресс-бар
-                        alcoholData: { alcoholLevel: newAlcoholStatus },
-                    };
-                }
+            // ✅ Если уже получили `abnormal` или `normal`, игнорируем повторные запросы
+            if (refs.isAlcoholMeasured) return;
     
-                return {
+            // ✅ Фиксируем, если получили `abnormal` или `normal`
+            if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
+                newAlcoholStatus = data.alcoholLevel;
+                refs.isAlcoholMeasured = true;
+    
+                // ✅ Сохраняем в localStorage
+                localStorage.setItem("alcoholResult", JSON.stringify({ alcoholLevel: newAlcoholStatus }));
+                console.log("💾 Saved to localStorage:", newAlcoholStatus);
+    
+                // ✅ Обновляем state
+                setState((prev) => ({
                     ...prev,
-                    stabilityTime: prev.currentState === "TEMPERATURE"
-                        ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
-                        : prev.stabilityTime,
-                    temperatureData: prev.currentState === "TEMPERATURE"
-                        ? { temperature: Number(data.temperature) || 0 }
-                        : prev.temperatureData,
-                };
-            });
+                    stabilityTime: MAX_STABILITY_TIME, // 🔥 Завершаем прогресс-бар
+                    alcoholData: { alcoholLevel: newAlcoholStatus },
+                }));
     
-            // ✅ После завершения прогресса - уходим на complete-authentication
-            if (isValidAlcoholLevel) {
+                // ✅ Навигация после завершения прогресса
                 setTimeout(() => {
                     console.log("🚀 Navigating to complete-authentication...");
                     navigate("/complete-authentication", { state: { success: true } });
-                }, 1000); // ✅ Ждем 1 сек, чтобы UI успел показать финальный статус
+                }, 1000);
             }
         },
         [handleTimeout, state.alcoholData.alcoholLevel, navigate]
     );
+    
     
     useEffect(() => {
         if (refs.socket) {
