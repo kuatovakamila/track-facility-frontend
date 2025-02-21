@@ -158,9 +158,9 @@ export const useHealthCheck = (): HealthCheckState & {
             if (data) {
                 let alcoholLevel = "undefined";
     
-                if (data.drunk === 1) {
+                if (data.drunk === 0) {
                     alcoholLevel = "drunk";
-                } else if (data.sober === 1) {
+                } else if (data.sober === 0) {
                     alcoholLevel = "sober";
                 }
     
