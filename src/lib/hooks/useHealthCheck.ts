@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
-import { ref, onValue, off } from "firebase/database";
+import { ref, onValue } from "firebase/database";
 import { db } from "./firebase";
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
@@ -124,6 +124,22 @@ export const useHealthCheck = (): HealthCheckState & {
 		},
 		[handleDataEvent, handleTimeout]
 	);
+    const handleComplete = useCallback(async () => {
+		if (refs.isSubmitting) return;
+		refs.isSubmitting = true;
+
+		const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
+		if (currentIndex < STATE_SEQUENCE.length - 1) {
+			updateState({
+				currentState: STATE_SEQUENCE[currentIndex + 1],
+				stabilityTime: 0,
+			});
+			refs.isSubmitting = false;
+			return;
+		}
+		navigate("/complete-authentication", { state: { success: true } });
+	}, [state, navigate, updateState]);
+
 
     const listenToAlcoholData = useCallback(() => {
         const alcoholRef = ref(db, "alcohol_value");
@@ -131,6 +147,7 @@ export const useHealthCheck = (): HealthCheckState & {
     
         refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
     
+        // ✅ Правильное использование отписки
         const unsubscribe = onValue(alcoholRef, (snapshot) => {
             const data = snapshot.val();
             if (!data) {
@@ -140,43 +157,45 @@ export const useHealthCheck = (): HealthCheckState & {
     
             console.log("📡 Alcohol data received from Firebase:", data);
     
-            let alcoholStatus = state.alcoholData.alcoholLevel;
-    
-            // Если уже есть "Трезвый" или "Пьяный", не обновляем
-            if (alcoholStatus === "Трезвый" || alcoholStatus === "Пьяный") {
+            if (refs.alcoholMeasured) {
                 console.log("✅ Alcohol status already determined, ignoring updates.");
                 return;
             }
+    
+            let alcoholStatus = "Не определено";
     
             if (data.sober === 0) alcoholStatus = "Трезвый";
             else if (data.drunk === 0) alcoholStatus = "Пьяный";
     
             if (alcoholStatus !== "Не определено") {
-                console.log("✅ Setting final alcohol status:", alcoholStatus);
+                console.log("✅ Final alcohol status detected:", alcoholStatus);
+                
                 updateState({
                     alcoholData: { alcoholLevel: alcoholStatus },
                 });
     
                 clearTimeout(refs.timeout!);
     
-                // ✅ Останавливаем слушатель Firebase, как только статус определён
-                console.log("❌ Unsubscribing from Firebase after final result.");
-                off(alcoholRef);
                 refs.alcoholMeasured = true;
     
-                // ✅ Переход на след. страницу после определения статуса
-                setTimeout(() => {
-                    navigate("/complete-authentication");
+                console.log("❌ Unsubscribing from Firebase after final result.");
+                unsubscribe(); // ✅ Теперь мы используем отписку!
+    
+                setTimeout(async () => {
+                    console.log("🚀 Executing handleComplete()");
+                    await handleComplete();
                 }, 500);
             }
         });
     
         return () => {
             console.log("❌ Stopping alcohol listener.");
-            off(alcoholRef, "value", unsubscribe);
+            unsubscribe(); // ✅ Используем отписку перед выходом
             clearTimeout(refs.timeout!);
         };
-    }, [navigate, handleTimeout, state.alcoholData.alcoholLevel]);
+    }, [handleComplete, handleTimeout]);
+    
+    
     
 
 	useEffect(() => {
@@ -234,22 +253,7 @@ export const useHealthCheck = (): HealthCheckState & {
 		return () => clearInterval(interval);
 	}, [state.currentState]);
 
-	const handleComplete = useCallback(async () => {
-		if (refs.isSubmitting) return;
-		refs.isSubmitting = true;
-
-		const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
-		if (currentIndex < STATE_SEQUENCE.length - 1) {
-			updateState({
-				currentState: STATE_SEQUENCE[currentIndex + 1],
-				stabilityTime: 0,
-			});
-			refs.isSubmitting = false;
-			return;
-		}
-		navigate("/complete-authentication", { state: { success: true } });
-	}, [state, navigate, updateState]);
-
+	
 	return {
 		...state,
 		secondsLeft,
