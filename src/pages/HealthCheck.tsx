@@ -52,19 +52,19 @@ export default function HealthCheck() {
 		console.log({ displayValue });
 	}
 
-	// Навигация при завершении теста на алкоголь (без useRouter)
+	// Handle redirection to complete-authentication after the alcohol test is complete
 	useEffect(() => {
 		if (currentState === "ALCOHOL" && stabilityTime >= MAX_STABILITY_TIME) {
-			window.location.href = "/complete-authentication";
+			window.location.href = "/complete-authentication"; // Redirect when the alcohol test is complete
 		}
 	}, [currentState, stabilityTime]);
 
-	// Обновленная функция handleComplete для перехода
+	// Function to handle the completion of the loading circle and trigger the transition
 	const handleLoadingComplete = () => {
-		if (currentState === "ALCOHOL") {
-			window.location.href = "/complete-authentication";
+		if (currentState === "ALCOHOL" && stabilityTime >= MAX_STABILITY_TIME) {
+			window.location.href = "/complete-authentication"; // Redirect for alcohol test
 		} else {
-			handleComplete();
+			handleComplete(); // Proceed with the next state
 		}
 	};
 
@@ -107,7 +107,7 @@ export default function HealthCheck() {
 						value={displayValue ?? "loading"}
 						unit={state.unit}
 						progress={(stabilityTime / MAX_STABILITY_TIME) * 100}
-						onComplete={handleLoadingComplete} // ✅ Измененная функция
+						onComplete={handleLoadingComplete} // Updated function for completion
 					/>
 					{!displayValue && (
 						<span className="text-sm text-gray-400">
