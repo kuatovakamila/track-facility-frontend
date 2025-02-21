@@ -149,7 +149,7 @@ export const useHealthCheck = (): HealthCheckState & {
     
             clearTimeout(refs.timeout!);
     
-            // ✅ Prevents re-navigation after first valid alcohol data
+            // ✅ Prevents re-navigation and unnecessary state resets
             if (!refs.alcoholMeasured && (data.sober === 0 || data.drunk === 0)) {
                 refs.alcoholMeasured = true;
                 console.log("✅ Alcohol measurement finalized. Starting progress animation...");
@@ -169,7 +169,6 @@ export const useHealthCheck = (): HealthCheckState & {
         };
     }, [navigate, handleTimeout]);
     
-
 	useEffect(() => {
 		refs.hasTimedOut = false;
 
@@ -223,21 +222,31 @@ export const useHealthCheck = (): HealthCheckState & {
 	}, [state.currentState]);
 
 	const handleComplete = useCallback(async () => {
-		if (refs.isSubmitting) return;
-		refs.isSubmitting = true;
-
-		const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
-		if (currentIndex < STATE_SEQUENCE.length - 1) {
-			updateState({
-				currentState: STATE_SEQUENCE[currentIndex + 1],
-				stabilityTime: 0,
-			});
-			refs.isSubmitting = false;
-			return;
-		}
-		navigate("/complete-authentication", { state: { success: true } });
-	}, [state, navigate, updateState]);
-
+        if (refs.isSubmitting) return;
+        refs.isSubmitting = true;
+    
+        const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
+    
+        // ✅ If in alcohol state and already measured, navigate instead of continuing
+        if (state.currentState === "ALCOHOL" && refs.alcoholMeasured) {
+            console.log("✅ Final state reached. Navigating to complete-authentication.");
+            navigate("/complete-authentication", { state: { success: true } });
+            return;
+        }
+    
+        // ✅ Otherwise, move to the next state
+        if (currentIndex < STATE_SEQUENCE.length - 1) {
+            updateState({
+                currentState: STATE_SEQUENCE[currentIndex + 1],
+                stabilityTime: 0,
+            });
+            refs.isSubmitting = false;
+            return;
+        }
+    
+        navigate("/complete-authentication", { state: { success: true } });
+    }, [state, navigate, updateState]);
+    
 	return {
 		...state,
 		secondsLeft,
