@@ -239,7 +239,7 @@ export const useHealthCheck = (): HealthCheckState & {
 			if (!faceId) throw new Error("Face ID not found");
 
 			const response = await fetch(
-				`${import.meta.env.VITE_SERVER_URL}/health`,
+				`${import.meta.env.VITE_SERVER_URL}/health`|| 'http://localhost:3001',
 				{
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
