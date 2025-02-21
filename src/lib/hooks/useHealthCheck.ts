@@ -161,12 +161,12 @@ export const useHealthCheck = (): HealthCheckState & {
                 return;
             }
     
-            let alcoholStatus = "Не определено";
+            let alcoholStatus = state.alcoholData.alcoholLevel;
     
             if (data.sober === 0) alcoholStatus = "Трезвый";
             else if (data.drunk === 0) alcoholStatus = "Пьяный";
     
-            if (alcoholStatus !== "Не определено") {
+            if (alcoholStatus !== "Не определено" && alcoholStatus !== state.alcoholData.alcoholLevel) {
                 console.log("✅ Final alcohol status detected:", alcoholStatus);
                 
                 updateState({
@@ -175,12 +175,14 @@ export const useHealthCheck = (): HealthCheckState & {
     
                 clearTimeout(refs.timeout!);
     
-                refs.alcoholMeasured = true;
+                refs.alcoholMeasured = true; // ✅ Фиксируем результат, чтобы больше не обновлять
     
                 console.log("❌ Unsubscribing from Firebase after final result.");
-                unsubscribe(); // Останавливаем подписку
+                unsubscribe(); // ✅ Останавливаем подписку на Firebase
     
-                // ✅ Гарантируем вызов handleComplete() и предотвращаем повторный цикл
+                // ✅ Устанавливаем флаг завершения процесса, предотвращая повторный цикл
+                refs.isSubmitting = true; 
+    
                 console.log("🚀 Executing handleComplete()");
                 await handleComplete();
             }
@@ -188,7 +190,7 @@ export const useHealthCheck = (): HealthCheckState & {
     
         return () => {
             console.log("❌ Stopping alcohol listener.");
-            unsubscribe(); // Останавливаем слушателя при выходе
+            unsubscribe(); // ✅ Останавливаем подписку при размонтировании
             clearTimeout(refs.timeout!);
         };
     }, [handleComplete, handleTimeout]);
