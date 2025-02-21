@@ -13,7 +13,6 @@ const STABILITY_UPDATE_INTERVAL = 1000;
 const TIMEOUT_MESSAGE =
 	"Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
 
-// Type definitions
 type SensorData = {
 	temperature?: string;
 	alcoholLevel?: string;
@@ -37,12 +36,10 @@ const configureSocketListeners = (
 		onError: () => void;
 	},
 ) => {
-	// Remove any existing listeners
 	socket.removeAllListeners();
 	socket.on("connect_error", handlers.onError);
 	socket.on("error", handlers.onError);
 
-	// Add only the listener for current state
 	switch (currentState) {
 		case "TEMPERATURE":
 			socket.on("temperature", handlers.onData);
@@ -69,6 +66,7 @@ export const useHealthCheck = (): HealthCheckState & {
 		lastDataTime: Date.now(),
 		hasTimedOut: false,
 		isSubmitting: false,
+		alcoholMeasured: false, // ✅ Prevents re-navigation after the first measurement
 	}).current;
 
 	const updateState = useCallback(
@@ -93,7 +91,7 @@ export const useHealthCheck = (): HealthCheckState & {
 			},
 		});
 		navigate("/");
-	}, [navigate, refs]);
+	}, [navigate]);
 
 	const handleDataEvent = useCallback(
 		(data: SensorData) => {
@@ -113,7 +111,7 @@ export const useHealthCheck = (): HealthCheckState & {
 						: state.temperatureData,
 			});
 		},
-		[state.currentState, state.stabilityTime, state.temperatureData, updateState, handleTimeout, refs],
+		[state.currentState, state.stabilityTime, state.temperatureData, updateState, handleTimeout],
 	);
 
 	const setupSocketForState = useCallback(
@@ -152,8 +150,9 @@ export const useHealthCheck = (): HealthCheckState & {
 
 			clearTimeout(refs.timeout!);
 
-			// ✅ Navigate if alcohol data is valid
-			if (data.sober === 0 || data.drunk === 0) {
+			// ✅ Prevents re-navigation after first valid alcohol data
+			if (!refs.alcoholMeasured && (data.sober === 0 || data.drunk === 0)) {
+				refs.alcoholMeasured = true;
 				console.log("✅ Alcohol measurement finalized. Navigating...");
 				setTimeout(() => {
 					navigate("/complete-authentication");
@@ -161,7 +160,6 @@ export const useHealthCheck = (): HealthCheckState & {
 			}
 		});
 
-		// Cleanup
 		return () => {
 			console.log("❌ Stopping alcohol listener.");
 			off(alcoholRef, "value", unsubscribe);
@@ -192,13 +190,11 @@ export const useHealthCheck = (): HealthCheckState & {
 			}
 		}, STABILITY_UPDATE_INTERVAL);
 
-		// ✅ Start Firebase Listener for Alcohol when in "ALCOHOL" state
 		let cleanupAlcohol: (() => void) | undefined;
 		if (state.currentState === "ALCOHOL") {
 			cleanupAlcohol = listenToAlcoholData();
 		}
 
-		// Cleanup function
 		return () => {
 			socket.disconnect();
 			clearTimeout(refs.timeout!);
@@ -212,7 +208,6 @@ export const useHealthCheck = (): HealthCheckState & {
 		handleDataEvent,
 		setupSocketForState,
 		listenToAlcoholData,
-		refs,
 		updateState,
 	]);
 
@@ -238,7 +233,7 @@ export const useHealthCheck = (): HealthCheckState & {
 			return;
 		}
 		navigate("/complete-authentication", { state: { success: true } });
-	}, [state, navigate, refs, updateState]);
+	}, [state, navigate, updateState]);
 
 	return {
 		...state,
@@ -248,6 +243,7 @@ export const useHealthCheck = (): HealthCheckState & {
 			updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
 	};
 };
+
 
 
 // import { useState, useEffect, useCallback, useRef } from "react";
