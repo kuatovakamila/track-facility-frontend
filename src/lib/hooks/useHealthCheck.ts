@@ -143,34 +143,47 @@ export const useHealthCheck = (): HealthCheckState & {
 				clearInterval(stabilityInterval);
 			};
 		} else if (state.currentState === "ALCOHOL" && !refs.isAlcoholFinalized) {
-			const alcoholRef = ref(db, "alcohol_value");
-
-			const unsubscribe = onValue(alcoholRef, (snapshot) => {
-				const alcoholData = snapshot.val();
-				if (alcoholData !== null) {
-					// If either value is 0, determine status and finalize
-					if (alcoholData.drunk === 0) {
-						updateState({ alcoholData: { alcoholLevel: "sober" } });
-					} else if (alcoholData.sober === 0) {
-						updateState({ alcoholData: { alcoholLevel: "drunk" } });
-					}
-
-					if (alcoholData.drunk === 0 || alcoholData.sober === 0) {
-						off(alcoholRef);
-						refs.unsubscribeAlcohol();
-						refs.isAlcoholFinalized = true;
-						handleComplete();
-					}
-				}
-			});
-
-			refs.unsubscribeAlcohol = unsubscribe;
-
-			return () => {
-				off(alcoholRef);
-				refs.unsubscribeAlcohol();
-			};
-		}
+            const alcoholRef = ref(db, "alcohol_value");
+        
+            const unsubscribe = onValue(alcoholRef, (snapshot) => {
+                const alcoholData = snapshot.val();
+                console.log("🔥 Firebase Data Received:", alcoholData); // Debugging
+        
+                if (alcoholData !== null && typeof alcoholData === "object") {
+                    let newAlcoholLevel = state.alcoholData.alcoholLevel;
+        
+                    // Wait until either drunk or sober is 0
+                    if (alcoholData.drunk === 0) {
+                        newAlcoholLevel = "sober";
+                    } else if (alcoholData.sober === 0) {
+                        newAlcoholLevel = "drunk";
+                    }
+        
+                    // Update only if a valid state is determined
+                    if (newAlcoholLevel !== "pending" && newAlcoholLevel !== state.alcoholData.alcoholLevel) {
+                        console.log("✅ Updating alcoholLevel to:", newAlcoholLevel);
+        
+                        updateState({ alcoholData: { alcoholLevel: newAlcoholLevel } });
+        
+                        // Stop listening to Firebase after determining the result
+                        off(alcoholRef);
+                        refs.isAlcoholFinalized = true;
+                        handleComplete();
+                    }
+                } else {
+                    console.warn("⚠️ Unexpected Firebase Data:", alcoholData);
+                }
+            });
+        
+            refs.unsubscribeAlcohol = unsubscribe;
+        
+            return () => {
+                console.log("🔌 Unsubscribing from Firebase...");
+                off(alcoholRef);
+                refs.unsubscribeAlcohol();
+            };
+        }
+        
 	}, [state.currentState, state.stabilityTime, handleTimeout, handleDataEvent, setupSocketForState, updateState]);
 
 	useEffect(() => {
