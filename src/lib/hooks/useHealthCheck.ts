@@ -18,7 +18,7 @@ export type HealthCheckState = {
 };
 
 // ✅ WebSocket connection (Replace with your backend URL)
-const socket = io(import.meta.env.VITE_SERVER_URL || "http:localhost:3001", {
+const socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost:3001", {
     transports: ["websocket", "polling"],
     secure: true,
     reconnection: true,
