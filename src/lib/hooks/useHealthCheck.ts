@@ -170,7 +170,7 @@ export const useHealthCheck = (): HealthCheckState & {
 		refs.hasTimedOut = false;
 
 		const socket = io(
-			import.meta.env.VITE_SERVER_URL || "http://localhost:3001",
+			"http://localhost:3001",
 			{
 				transports: ["websocket"],
 				reconnection: true,
