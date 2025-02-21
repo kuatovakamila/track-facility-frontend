@@ -183,9 +183,9 @@ export const useHealthCheck = (): HealthCheckState & {
     useEffect(() => {
         if (state.currentState !== "ALCOHOL") return;
     
-        const alcoholRef = ref(db, "alcohol_value");
+        const alcoholRef = ref(db, "alcohol_data");
     
-        onValue(alcoholRef, (snapshot) => {
+        const unsubscribe = onValue(alcoholRef, (snapshot) => {
             const data = snapshot.val();
             if (!data) return; // Exit if no data is received
     
@@ -213,11 +213,18 @@ export const useHealthCheck = (): HealthCheckState & {
             updateState({ alcoholData: { alcoholLevel } });
             localStorage.setItem("alcoholStatus", alcoholLevel);
     
+            // ✅ Stop listening to Firebase to prevent further updates
+            unsubscribe(); 
+    
             // ✅ Immediately complete the process after detecting final state
             handleComplete();
         });
     
+        // Cleanup function to stop listening if the component unmounts
+        return () => unsubscribe();
+    
     }, [state.currentState, updateState, handleComplete]);
+    
     
 
     useEffect(() => {
