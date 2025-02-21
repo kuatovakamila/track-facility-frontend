@@ -138,46 +138,53 @@ export const useHealthCheck = (): HealthCheckState & {
     
             console.log("📡 Alcohol data received from Firebase:", data);
     
-            // ✅ Check if a final state is already set to prevent overwriting
+            // ✅ Prevent unnecessary updates after a valid measurement
             if (refs.alcoholMeasured) {
-                console.log("⚠️ Alcohol measurement already finalized, ignoring further updates.");
+                console.log("⚠️ Already measured. Ignoring further updates.");
                 return;
             }
     
             let alcoholStatus = "Не определено";
     
-            // ✅ Only update if a valid final state is detected
             if (data.sober === 0) {
                 alcoholStatus = "Трезвый";
             } else if (data.drunk === 0) {
                 alcoholStatus = "Пьяный";
             } else {
-                console.log("❌ No valid alcohol level detected, skipping update.");
+                console.log("❌ No valid alcohol reading. Skipping update.");
                 return;
             }
     
             console.log(`🛠 Updating alcohol level state: ${alcoholStatus}`);
     
-            // ✅ Update state and prevent further changes
+            // ✅ Save in Local Storage
+            localStorage.setItem("alcoholState", alcoholStatus);
+            console.log(`💾 Saved to Local Storage: ${alcoholStatus}`);
+    
+            // ✅ Stop listening to prevent state from resetting
+            off(alcoholRef, "value", unsubscribe);
+            console.log("❌ Stopping Firebase listener to prevent overwrites.");
+    
+            // ✅ Update state only once and prevent further updates
             updateState((prev: HealthCheckState) => ({
                 ...prev,
                 alcoholData: { alcoholLevel: alcoholStatus },
             }));
     
-            refs.alcoholMeasured = true; // 🚨 Prevent further updates
+            refs.alcoholMeasured = true;
     
             clearTimeout(refs.timeout!);
     
-            // ✅ Delay navigation to allow UI to update
+            // ✅ Allow UI to update before navigating
             setTimeout(() => {
-                console.log(`📡 Alcohol Level Displayed (After State Update): ${alcoholStatus}`);
+                console.log(`📡 Final Alcohol Level Displayed: ${alcoholStatus}`);
                 console.log("🎯 Progress bar completed. Navigating...");
                 navigate("/complete-authentication");
             }, 3000);
         });
     
         return () => {
-            console.log("❌ Stopping alcohol listener.");
+            console.log("❌ Stopping alcohol listener (cleanup).");
             off(alcoholRef, "value", unsubscribe);
             clearTimeout(refs.timeout!);
         };
