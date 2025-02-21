@@ -183,7 +183,7 @@ export const useHealthCheck = (): HealthCheckState & {
     useEffect(() => {
         if (state.currentState !== "ALCOHOL") return;
     
-        const alcoholRef = ref(db, "alcohol_value");
+        const alcoholRef = ref(db, "alcohol_data");
     
         const unsubscribe = onValue(alcoholRef, (snapshot) => {
             const data = snapshot.val();
@@ -191,42 +191,43 @@ export const useHealthCheck = (): HealthCheckState & {
     
             console.log("📡 Received alcohol data:", data);
     
-            let alcoholLevel = state.alcoholData.alcoholLevel; // Preserve the current state
+            let finalAlcoholLevel = state.alcoholData.alcoholLevel; // Preserve current value
     
-            // ✅ Detect final state (lock it in)
-            if (data.sober === 0 && alcoholLevel !== "sober") {
-                alcoholLevel = "sober";
-            } else if (data.drunk === 0 && alcoholLevel !== "drunk") {
-                alcoholLevel = "drunk";
+            // ✅ Detect `sober: 0` or `drunk: 0` and LOCK it
+            if (data.sober === 0) {
+                finalAlcoholLevel = "sober";
+            } else if (data.drunk === 0) {
+                finalAlcoholLevel = "drunk";
             }
     
-            console.log("✅ Determined alcohol level:", alcoholLevel);
+            console.log("✅ Determined alcohol level:", finalAlcoholLevel);
     
-            // ❌ Ignore cases where data is still in an undefined state
-            if (alcoholLevel === "undefined") return;
+            // ❌ Ignore cases where the state is still undefined
+            if (finalAlcoholLevel === "undefined") return;
     
             // ✅ Ensure we only process a new state ONCE
             const storedAlcoholStatus = localStorage.getItem("alcoholStatus");
-            if (storedAlcoholStatus === alcoholLevel) return;
+            if (storedAlcoholStatus === finalAlcoholLevel) return;
     
-            // ✅ Save the final detected status to localStorage
-            localStorage.setItem("alcoholStatus", alcoholLevel);
-            console.log("💾 Final alcohol state saved:", alcoholLevel);
+            // ✅ Save FINAL detected state in `localStorage`
+            localStorage.setItem("alcoholStatus", finalAlcoholLevel);
+            console.log("💾 Final alcohol state saved:", finalAlcoholLevel);
     
-            // ✅ Update state to lock final value
-            updateState({ alcoholData: { alcoholLevel } });
+            // ✅ Lock state to prevent further updates
+            updateState({ alcoholData: { alcoholLevel: finalAlcoholLevel } });
     
-            // ✅ Stop listening to Firebase immediately
+            // ✅ Stop Firebase listener immediately after detection
             unsubscribe(); 
     
             // ✅ Execute handleComplete() to finalize the process
             handleComplete();
         });
     
-        // Cleanup function to stop listening if the component unmounts
+        // ✅ Cleanup function to stop listening if the component unmounts
         return () => unsubscribe();
     
     }, [state.currentState, updateState, handleComplete]);
+    
     
     
 
