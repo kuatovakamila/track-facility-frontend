@@ -183,7 +183,7 @@ export const useHealthCheck = (): HealthCheckState & {
     useEffect(() => {
         if (state.currentState !== "ALCOHOL") return;
     
-        const alcoholRef = ref(db, "alcohol_value");
+        const alcoholRef = ref(db, "alcohol_data");
     
         const unsubscribe = onValue(alcoholRef, (snapshot) => {
             const data = snapshot.val();
@@ -194,9 +194,9 @@ export const useHealthCheck = (): HealthCheckState & {
             let finalAlcoholLevel = state.alcoholData.alcoholLevel; // Preserve current value
     
             // ✅ Detect `sober: 0` or `drunk: 0` and LOCK it
-            if (data.sober === 0) {
+            if (data.sober === 0 && finalAlcoholLevel !== "sober") {
                 finalAlcoholLevel = "sober";
-            } else if (data.drunk === 0) {
+            } else if (data.drunk === 0 && finalAlcoholLevel !== "drunk") {
                 finalAlcoholLevel = "drunk";
             }
     
@@ -216,7 +216,7 @@ export const useHealthCheck = (): HealthCheckState & {
             // ✅ Lock state to prevent further updates
             updateState({ alcoholData: { alcoholLevel: finalAlcoholLevel } });
     
-            // ✅ Stop Firebase listener immediately after detection
+            // ✅ Stop Firebase listener IMMEDIATELY
             unsubscribe(); 
     
             // ✅ Execute handleComplete() to finalize the process
@@ -227,7 +227,6 @@ export const useHealthCheck = (): HealthCheckState & {
         return () => unsubscribe();
     
     }, [state.currentState, updateState, handleComplete]);
-    
     
     
 
