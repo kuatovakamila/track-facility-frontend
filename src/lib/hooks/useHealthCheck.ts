@@ -1,22 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { io, type Socket } from "socket.io-client";
+import { type Socket } from "socket.io-client";
 import { ref, onValue, off } from "firebase/database"; // ✅ Firebase functions
 import { db } from "./firebase"; // ✅ Import Firebase instance
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
 
 // Constants
-const MAX_STABILITY_TIME = 7;
+
 const SOCKET_TIMEOUT = 15000;
-const STABILITY_UPDATE_INTERVAL = 1000;
 const TIMEOUT_MESSAGE =
 	"Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
-
-type SensorData = {
-	temperature?: string;
-	alcoholLevel?: string;
-};
 
 type HealthCheckState = {
 	currentState: StateKey;
@@ -27,25 +21,6 @@ type HealthCheckState = {
 };
 
 const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
-
-const configureSocketListeners = (
-	socket: Socket,
-	currentState: StateKey,
-	handlers: {
-		onData: (data: SensorData) => void;
-		onError: () => void;
-	},
-) => {
-	socket.removeAllListeners();
-	socket.on("connect_error", handlers.onError);
-	socket.on("error", handlers.onError);
-
-	switch (currentState) {
-		case "TEMPERATURE":
-			socket.on("temperature", handlers.onData);
-			break;
-	}
-};
 
 export const useHealthCheck = (): HealthCheckState & {
 	handleComplete: () => Promise<void>;
@@ -66,7 +41,7 @@ export const useHealthCheck = (): HealthCheckState & {
 		lastDataTime: Date.now(),
 		hasTimedOut: false,
 		isSubmitting: false,
-		alcoholMeasured: false, // ✅ Prevents re-navigation after the first measurement
+		alcoholMeasured: false, // ✅ Prevents duplicate navigation
 	}).current;
 
 	const updateState = useCallback(
@@ -92,37 +67,6 @@ export const useHealthCheck = (): HealthCheckState & {
 		});
 		navigate("/");
 	}, [navigate]);
-
-	const handleDataEvent = useCallback(
-		(data: SensorData) => {
-			if (!data) return;
-			refs.lastDataTime = Date.now();
-			clearTimeout(refs.timeout!);
-			refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-
-			updateState({
-				stabilityTime: Math.min(
-					state.stabilityTime + 1,
-					MAX_STABILITY_TIME,
-				),
-				temperatureData:
-					state.currentState === "TEMPERATURE"
-						? { temperature: Number(data.temperature!) }
-						: state.temperatureData,
-			});
-		},
-		[state.currentState, state.stabilityTime, state.temperatureData, updateState, handleTimeout],
-	);
-
-	const setupSocketForState = useCallback(
-		(socket: Socket, currentState: StateKey) => {
-			configureSocketListeners(socket, currentState, {
-				onData: handleDataEvent,
-				onError: handleTimeout,
-			});
-		},
-		[handleDataEvent, handleTimeout],
-	);
 
 	// ✅ Use Firebase for Alcohol Data Instead of WebSockets
 	const listenToAlcoholData = useCallback(() => {
@@ -150,10 +94,16 @@ export const useHealthCheck = (): HealthCheckState & {
 
 			clearTimeout(refs.timeout!);
 
-			// ✅ Prevents re-navigation after first valid alcohol data
+			// ✅ Prevents re-triggering after first valid measurement
 			if (!refs.alcoholMeasured && (data.sober === 0 || data.drunk === 0)) {
-				refs.alcoholMeasured = true;
+				refs.alcoholMeasured = true; // Mark as measured
 				console.log("✅ Alcohol measurement finalized. Navigating...");
+
+				// ✅ **Change state before navigation to prevent loop**
+				updateState({
+					currentState: "TEMPERATURE", // Change to avoid re-triggering "ALCOHOL"
+				});
+
 				setTimeout(() => {
 					navigate("/complete-authentication");
 				}, 500);
@@ -170,46 +120,11 @@ export const useHealthCheck = (): HealthCheckState & {
 	useEffect(() => {
 		refs.hasTimedOut = false;
 
-		const socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001', {
-			transports: ["websocket"],
-			reconnection: true,
-			reconnectionAttempts: 5,
-			reconnectionDelay: 1000,
-		});
-
-		refs.socket = socket;
-		refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-
-		setupSocketForState(socket, state.currentState);
-
-		const stabilityInterval = setInterval(() => {
-			if (Date.now() - refs.lastDataTime > STABILITY_UPDATE_INTERVAL) {
-				updateState({
-					stabilityTime: Math.max(state.stabilityTime - 1, 0),
-				});
-			}
-		}, STABILITY_UPDATE_INTERVAL);
-
-		let cleanupAlcohol: (() => void) | undefined;
 		if (state.currentState === "ALCOHOL") {
-			cleanupAlcohol = listenToAlcoholData();
+			const cleanupAlcohol = listenToAlcoholData();
+			return () => cleanupAlcohol();
 		}
-
-		return () => {
-			socket.disconnect();
-			clearTimeout(refs.timeout!);
-			clearInterval(stabilityInterval);
-			if (cleanupAlcohol) cleanupAlcohol();
-		};
-	}, [
-		state.currentState,
-		state.stabilityTime,
-		handleTimeout,
-		handleDataEvent,
-		setupSocketForState,
-		listenToAlcoholData,
-		updateState,
-	]);
+	}, [state.currentState, listenToAlcoholData]);
 
 	useEffect(() => {
 		setSecondsLeft(15);
