@@ -132,8 +132,8 @@ export const useHealthCheck = (): HealthCheckState & {
 
 		if (state.currentState === "ALCOHOL") {
 			console.log("🚀 Alcohol test complete. Navigating to authentication...");
-			navigate("/complete-authentication", { state: { success: true } });
-			return;
+            window.location.href = "/complete-authentication"; // Redirect for alcohol test'
+            			return;
 		}
 
 		const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
