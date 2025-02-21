@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { ref, onValue } from "firebase/database";
@@ -91,15 +91,20 @@ export const useHealthCheck = (): HealthCheckState & {
 	const handleDataEvent = useCallback(
 		(data: SensorData) => {
 			if (!data) return;
+
+			// If the data is from alcohol measurement, prevent progress from moving if no alcohol data was received
+			if (state.currentState === "ALCOHOL" && refs.alcoholMeasured) {
+				return; // Skip progress update if alcohol data is already handled
+			}
+
+			// Handle data and set the appropriate temperature or alcohol data
 			refs.lastDataTime = Date.now();
 			clearTimeout(refs.timeout!);
 			refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
+			// Update stability time when data is received
 			updateState({
-				stabilityTime: Math.min(
-					state.stabilityTime + 1,
-					MAX_STABILITY_TIME
-				),
+				stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
 				temperatureData:
 					state.currentState === "TEMPERATURE"
 						? { temperature: Number(data.temperature!) }
@@ -125,17 +130,19 @@ export const useHealthCheck = (): HealthCheckState & {
 		[handleDataEvent, handleTimeout]
 	);
 
-	// ✅ Handle when alcohol test completes
+	// Handle when alcohol test completes
 	const handleComplete = useCallback(async () => {
 		if (refs.isSubmitting) return;
 		refs.isSubmitting = true;
 
-		if (state.currentState === "ALCOHOL") {
-			console.log("🚀 Alcohol test complete. Navigating to authentication...");
-            window.location.href = "/complete-authentication"; // Redirect for alcohol test'
-            			return;
+		// Skip to alcohol state if it's not already done
+		if (state.currentState === "ALCOHOL" && !refs.alcoholMeasured) {
+			console.log("❌ Alcohol data not received yet");
+			refs.isSubmitting = false;
+			return;
 		}
 
+		// If state transitions to the next one, or if alcohol test is complete
 		const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
 		if (currentIndex < STATE_SEQUENCE.length - 1) {
 			updateState({
@@ -145,9 +152,13 @@ export const useHealthCheck = (): HealthCheckState & {
 			refs.isSubmitting = false;
 			return;
 		}
+
+		// Final transition to complete authentication after alcohol data is confirmed
+		console.log("🚀 Transitioning to complete authentication");
+		navigate("/complete-authentication", { state: { success: true } });
 	}, [state, navigate, updateState]);
 
-	// ✅ Listen to alcohol data properly
+	// Listen to alcohol data properly
 	const listenToAlcoholData = useCallback(() => {
 		const alcoholRef = ref(db, "alcohol_value");
 		console.log("📡 Listening to Firebase alcohol data...");
@@ -171,8 +182,9 @@ export const useHealthCheck = (): HealthCheckState & {
 				});
 
 				clearTimeout(refs.timeout!);
-				unsubscribe();
+				unsubscribe(); // Stop listening after alcohol data is received
 
+				// Trigger the transition once alcohol data is received
 				console.log("🚀 Triggering handleComplete()");
 				await handleComplete();
 			}
@@ -200,7 +212,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
 		setupSocketForState(socket, state.currentState);
 
-		// ✅ Progress Bar Fix: Ensure stabilityTime increases
+		// Progress bar fix: Ensure stabilityTime increases
 		const stabilityInterval = setInterval(() => {
 			if (state.stabilityTime < MAX_STABILITY_TIME) {
 				updateState({
@@ -238,7 +250,7 @@ export const useHealthCheck = (): HealthCheckState & {
 		return () => clearInterval(interval);
 	}, [state.currentState]);
 
-    return {
+	return {
 		...state,
 		secondsLeft,
 		handleComplete,
@@ -248,6 +260,5 @@ export const useHealthCheck = (): HealthCheckState & {
 					typeof newState === "function"
 						? newState(state.currentState)
 						: newState,
-			}),
-	};
+			}),}
 };

@@ -55,14 +55,14 @@ export default function HealthCheck() {
 	// Handle redirection to complete-authentication after the alcohol test is complete
 	useEffect(() => {
 		if (currentState === "ALCOHOL" && stabilityTime >= MAX_STABILITY_TIME) {
-			window.location.href = "/complete-authentication"; // Redirect when the alcohol test is complete
+			window.location.href = "/complete-authentication";
 		}
 	}, [currentState, stabilityTime]);
 
 	// Function to handle the completion of the loading circle and trigger the transition
 	const handleLoadingComplete = () => {
 		if (currentState === "ALCOHOL" && stabilityTime >= MAX_STABILITY_TIME) {
-			window.location.href = "/complete-authentication"; // Redirect for alcohol test
+			window.location.href = "/complete-authentication";
 		} else {
 			handleComplete(); // Proceed with the next state
 		}
@@ -107,7 +107,7 @@ export default function HealthCheck() {
 						value={displayValue ?? "loading"}
 						unit={state.unit}
 						progress={(stabilityTime / MAX_STABILITY_TIME) * 100}
-						onComplete={handleLoadingComplete} // Updated function for completion
+						onComplete={handleLoadingComplete}
 					/>
 					{!displayValue && (
 						<span className="text-sm text-gray-400">
