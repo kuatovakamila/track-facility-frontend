@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
-import { ref, onValue, off } from "firebase/database"; // ✅ Firebase functions
-import { db } from "./firebase"; // ✅ Import Firebase instance
+import { ref, onValue, off } from "firebase/database";
+import { db } from "./firebase";
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
 
@@ -123,74 +123,48 @@ export const useHealthCheck = (): HealthCheckState & {
 		},
 		[handleDataEvent, handleTimeout],
 	);
-    const listenToAlcoholData = useCallback(() => {
-        const alcoholRef = ref(db, "alcohol_value");
-        console.log("📡 Listening to Firebase alcohol data...");
-    
-        refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-    
-        const unsubscribe = onValue(alcoholRef, (snapshot) => {
-            const data = snapshot.val();
-            if (!data) {
-                console.warn("⚠️ No alcohol data received from Firebase.");
-                return;
-            }
-    
-            console.log("📡 Alcohol data received from Firebase:", data);
-    
-            // ✅ Prevent unnecessary updates after a valid measurement
-            if (refs.alcoholMeasured) {
-                console.log("⚠️ Already measured. Ignoring further updates.");
-                return;
-            }
-    
-            let alcoholStatus = "Не определено";
-    
-            if (data.sober === 0) {
-                alcoholStatus = "Трезвый";
-            } else if (data.drunk === 0) {
-                alcoholStatus = "Пьяный";
-            } else {
-                console.log("❌ No valid alcohol reading. Skipping update.");
-                return;
-            }
-    
-            console.log(`🛠 Updating alcohol level state: ${alcoholStatus}`);
-    
-            // ✅ Save in Local Storage
-            localStorage.setItem("alcoholState", alcoholStatus);
-            console.log(`💾 Saved to Local Storage: ${alcoholStatus}`);
-    
-            // ✅ Stop listening to prevent state from resetting
-            off(alcoholRef, "value", unsubscribe);
-            console.log("❌ Stopping Firebase listener to prevent overwrites.");
-    
-            // ✅ Update state only once and prevent further updates
-            updateState((prev: HealthCheckState) => ({
-                ...prev,
-                alcoholData: { alcoholLevel: alcoholStatus },
-            }));
-    
-            refs.alcoholMeasured = true;
-    
-            clearTimeout(refs.timeout!);
-    
-            // ✅ Allow UI to update before navigating
-            setTimeout(() => {
-                console.log(`📡 Final Alcohol Level Displayed: ${alcoholStatus}`);
-                console.log("🎯 Progress bar completed. Navigating...");
-                navigate("/complete-authentication");
-            }, 3000);
-        });
-    
-        return () => {
-            console.log("❌ Stopping alcohol listener (cleanup).");
-            off(alcoholRef, "value", unsubscribe);
-            clearTimeout(refs.timeout!);
-        };
-    }, [navigate, handleTimeout]);
-    
-    
+
+	const listenToAlcoholData = useCallback(() => {
+		const alcoholRef = ref(db, "alcohol_value");
+		console.log("📡 Listening to Firebase alcohol data...");
+
+		refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+
+		const unsubscribe = onValue(alcoholRef, (snapshot) => {
+			const data = snapshot.val();
+			if (!data) {
+				console.warn("⚠️ No alcohol data received from Firebase.");
+				return;
+			}
+
+			console.log("📡 Alcohol data received from Firebase:", data);
+
+			let alcoholStatus = "Не определено";
+			if (data.sober === 0) alcoholStatus = "Трезвый";
+			else if (data.drunk === 0) alcoholStatus = "Пьяный";
+
+			updateState({
+				alcoholData: { alcoholLevel: alcoholStatus },
+			});
+
+			clearTimeout(refs.timeout!);
+
+			if (!refs.alcoholMeasured && (data.sober === 0 || data.drunk === 0)) {
+				refs.alcoholMeasured = true;
+				console.log("✅ Alcohol measurement finalized. Navigating...");
+				setTimeout(() => {
+					navigate("/complete-authentication");
+				}, 500);
+			}
+		});
+
+		return () => {
+			console.log("❌ Stopping alcohol listener.");
+			off(alcoholRef, "value", unsubscribe);
+			clearTimeout(refs.timeout!);
+		};
+	}, [navigate, handleTimeout]);
+
 	useEffect(() => {
 		refs.hasTimedOut = false;
 
@@ -215,6 +189,12 @@ export const useHealthCheck = (): HealthCheckState & {
 		}, STABILITY_UPDATE_INTERVAL);
 
 		let cleanupAlcohol: (() => void) | undefined;
+
+		if (refs.alcoholMeasured) {
+			console.log("⏩ Skipping state transition as alcohol is already measured.");
+			return;
+		}
+
 		if (state.currentState === "ALCOHOL") {
 			cleanupAlcohol = listenToAlcoholData();
 		}
@@ -244,31 +224,26 @@ export const useHealthCheck = (): HealthCheckState & {
 	}, [state.currentState]);
 
 	const handleComplete = useCallback(async () => {
-        if (refs.isSubmitting) return;
-        refs.isSubmitting = true;
-    
-        const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
-    
-        // ✅ If in alcohol state and already measured, navigate instead of continuing
-        if (state.currentState === "ALCOHOL" && refs.alcoholMeasured) {
-            console.log("✅ Final state reached. Navigating to complete-authentication.");
-            navigate("/complete-authentication", { state: { success: true } });
-            return;
-        }
-    
-        // ✅ Otherwise, move to the next state
-        if (currentIndex < STATE_SEQUENCE.length - 1) {
-            updateState({
-                currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0,
-            });
-            refs.isSubmitting = false;
-            return;
-        }
-    
-        navigate("/complete-authentication", { state: { success: true } });
-    }, [state, navigate, updateState]);
-    
+		if (refs.isSubmitting) return;
+		refs.isSubmitting = true;
+
+		if (refs.alcoholMeasured) {
+			navigate("/complete-authentication", { state: { success: true } });
+			return;
+		}
+
+		const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
+		if (currentIndex < STATE_SEQUENCE.length - 1) {
+			updateState({
+				currentState: STATE_SEQUENCE[currentIndex + 1],
+				stabilityTime: 0,
+			});
+			refs.isSubmitting = false;
+			return;
+		}
+		navigate("/complete-authentication", { state: { success: true } });
+	}, [state, navigate, updateState]);
+
 	return {
 		...state,
 		secondsLeft,
@@ -277,7 +252,6 @@ export const useHealthCheck = (): HealthCheckState & {
 			updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
 	};
 };
-
 
 
 // import { useState, useEffect, useCallback, useRef } from "react";
