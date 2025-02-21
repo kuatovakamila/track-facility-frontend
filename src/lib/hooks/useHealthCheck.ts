@@ -40,8 +40,10 @@ const configureSocketListeners = (
 	socket.on("connect_error", handlers.onError);
 	socket.on("error", handlers.onError);
 
-	if (currentState === "TEMPERATURE") {
-		socket.on("temperature", handlers.onData);
+	switch (currentState) {
+		case "TEMPERATURE":
+			socket.on("temperature", handlers.onData);
+			break;
 	}
 };
 
@@ -64,7 +66,7 @@ export const useHealthCheck = (): HealthCheckState & {
 		lastDataTime: Date.now(),
 		hasTimedOut: false,
 		isSubmitting: false,
-		alcoholMeasured: false, // ✅ Prevents re-measurement of alcohol
+		alcoholMeasured: false, // ✅ Prevents re-navigation after the first measurement
 	}).current;
 
 	const updateState = useCallback(
@@ -122,50 +124,51 @@ export const useHealthCheck = (): HealthCheckState & {
 		[handleDataEvent, handleTimeout],
 	);
 
-	const listenToAlcoholData = useCallback(() => {
-		const alcoholRef = ref(db, "alcohol_value");
-		console.log("📡 Listening to Firebase alcohol data...");
-
-		refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-
-		const unsubscribe = onValue(alcoholRef, (snapshot) => {
-			if (refs.alcoholMeasured) return; // ✅ Prevents duplicate alcohol measurement
-
-			const data = snapshot.val();
-			if (!data) {
-				console.warn("⚠️ No alcohol data received from Firebase.");
-				return;
-			}
-
-			console.log("📡 Alcohol data received from Firebase:", data);
-
-			let alcoholStatus = "Не определено";
-			if (data.sober === 0) alcoholStatus = "Трезвый";
-			else if (data.drunk === 0) alcoholStatus = "Пьяный";
-
-			updateState({
-				alcoholData: { alcoholLevel: alcoholStatus },
-			});
-
-			clearTimeout(refs.timeout!);
-
-			// ✅ Prevents re-navigation after first valid alcohol data
-			if (!refs.alcoholMeasured && (data.sober === 0 || data.drunk === 0)) {
-				refs.alcoholMeasured = true;
-				console.log("✅ Alcohol measurement finalized. Navigating...");
-
-				setTimeout(() => {
-					navigate("/complete-authentication");
-				}, 500);
-			}
-		});
-
-		return () => {
-			console.log("❌ Stopping alcohol listener.");
-			off(alcoholRef, "value", unsubscribe);
-			clearTimeout(refs.timeout!);
-		};
-	}, [navigate, handleTimeout]);
+    const listenToAlcoholData = useCallback(() => {
+        const alcoholRef = ref(db, "alcohol_value");
+        console.log("📡 Listening to Firebase alcohol data...");
+    
+        refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+    
+        const unsubscribe = onValue(alcoholRef, (snapshot) => {
+            const data = snapshot.val();
+            if (!data) {
+                console.warn("⚠️ No alcohol data received from Firebase.");
+                return;
+            }
+    
+            console.log("📡 Alcohol data received from Firebase:", data);
+    
+            let alcoholStatus = "Не определено";
+            if (data.sober === 0) alcoholStatus = "Трезвый";
+            else if (data.drunk === 0) alcoholStatus = "Пьяный";
+    
+            updateState({
+                alcoholData: { alcoholLevel: alcoholStatus },
+            });
+    
+            clearTimeout(refs.timeout!);
+    
+            // ✅ Prevents re-navigation after first valid alcohol data
+            if (!refs.alcoholMeasured && (data.sober === 0 || data.drunk === 0)) {
+                refs.alcoholMeasured = true;
+                console.log("✅ Alcohol measurement finalized. Starting progress animation...");
+    
+                // Simulate progress bar completion before navigation
+                setTimeout(() => {
+                    console.log("🎯 Progress bar completed. Navigating...");
+                    navigate("/complete-authentication");
+                }, 3000); // Adjust this timeout to match your progress animation duration
+            }
+        });
+    
+        return () => {
+            console.log("❌ Stopping alcohol listener.");
+            off(alcoholRef, "value", unsubscribe);
+            clearTimeout(refs.timeout!);
+        };
+    }, [navigate, handleTimeout]);
+    
 
 	useEffect(() => {
 		refs.hasTimedOut = false;
