@@ -140,25 +140,33 @@ export const useHealthCheck = (): HealthCheckState & {
             console.log("📡 Alcohol data received from Firebase:", data);
     
             let alcoholStatus = "Не определено";
-            if (data.sober === 0) alcoholStatus = "Трезвый";
-            else if (data.drunk === 0) alcoholStatus = "Пьяный";
     
-            updateState({
+            // ✅ Корректно определяем статус алкоголя
+            if (data.sober === 0) {
+                alcoholStatus = "Трезвый";
+            } else if (data.drunk === 0) {
+                alcoholStatus = "Пьяный";
+            }
+    
+            // ✅ Указываем правильный тип `prev`
+            updateState((prev: HealthCheckState) => ({
+                ...prev,
                 alcoholData: { alcoholLevel: alcoholStatus },
-            });
+            }));
     
+            // ✅ Очищаем таймер после обновления состояния
             clearTimeout(refs.timeout!);
     
-            // ✅ Prevents re-navigation and unnecessary state resets
+            // ✅ Навигация только при первом получении валидных данных
             if (!refs.alcoholMeasured && (data.sober === 0 || data.drunk === 0)) {
                 refs.alcoholMeasured = true;
-                console.log("✅ Alcohol measurement finalized. Starting progress animation...");
+                console.log(`✅ Alcohol measurement finalized as "${alcoholStatus}". Starting progress animation...`);
     
-                // Simulate progress bar completion before navigation
+                // ✅ Ждем завершения анимации перед навигацией
                 setTimeout(() => {
                     console.log("🎯 Progress bar completed. Navigating...");
                     navigate("/complete-authentication");
-                }, 3000); // Adjust this timeout to match your progress animation duration
+                }, 3000);
             }
         });
     
@@ -168,6 +176,8 @@ export const useHealthCheck = (): HealthCheckState & {
             clearTimeout(refs.timeout!);
         };
     }, [navigate, handleTimeout]);
+    
+    
     
 	useEffect(() => {
 		refs.hasTimedOut = false;
