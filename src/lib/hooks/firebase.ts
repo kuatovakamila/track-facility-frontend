@@ -15,5 +15,4 @@ const firebaseConfig = {
 // ✅ Prevent multiple Firebase initializations
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getDatabase(firebaseApp);
-s
 export { firebaseApp, db };
