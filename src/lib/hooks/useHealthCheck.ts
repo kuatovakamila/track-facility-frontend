@@ -191,9 +191,9 @@ export const useHealthCheck = (): HealthCheckState & {
     
             console.log("📡 Received alcohol data:", data);
     
-            let alcoholLevel = state.alcoholData.alcoholLevel; // Keep the existing value
+            let alcoholLevel = state.alcoholData.alcoholLevel; // Preserve the current state
     
-            // ✅ Detect and lock the first valid state
+            // ✅ Detect final state (lock it in)
             if (data.sober === 0 && alcoholLevel !== "sober") {
                 alcoholLevel = "sober";
             } else if (data.drunk === 0 && alcoholLevel !== "drunk") {
@@ -209,14 +209,17 @@ export const useHealthCheck = (): HealthCheckState & {
             const storedAlcoholStatus = localStorage.getItem("alcoholStatus");
             if (storedAlcoholStatus === alcoholLevel) return;
     
-            // ✅ Save the final detected status and prevent further changes
-            updateState({ alcoholData: { alcoholLevel } });
+            // ✅ Save the final detected status to localStorage
             localStorage.setItem("alcoholStatus", alcoholLevel);
+            console.log("💾 Final alcohol state saved:", alcoholLevel);
     
-            // ✅ Stop listening to Firebase to prevent further updates
+            // ✅ Update state to lock final value
+            updateState({ alcoholData: { alcoholLevel } });
+    
+            // ✅ Stop listening to Firebase immediately
             unsubscribe(); 
     
-            // ✅ Immediately complete the process after detecting final state
+            // ✅ Execute handleComplete() to finalize the process
             handleComplete();
         });
     
