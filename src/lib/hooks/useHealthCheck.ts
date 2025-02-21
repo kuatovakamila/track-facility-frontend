@@ -153,35 +153,40 @@ export const useHealthCheck = (): HealthCheckState & {
     
         const alcoholRef = ref(db, "alcohol_data");
     
-        const unsubscribe = onValue(alcoholRef, (snapshot) => {
+        onValue(alcoholRef, (snapshot) => {
             const data = snapshot.val();
-            if (data) {
-                let alcoholLevel = "undefined";
+            if (!data) return; // Exit if no data is received
     
-                if (data.drunk === 0) {
-                    alcoholLevel = "drunk";
-                } else if (data.sober === 0) {
-                    alcoholLevel = "sober";
-                }
+            let alcoholLevel = "undefined";
     
-                if (alcoholLevel !== "undefined") {
-                    updateState({ alcoholData: { alcoholLevel } });
-                    localStorage.setItem("alcoholStatus", alcoholLevel);
-    
-                    // Плавное завершение прогресса и навигация
-                    let progress = 0;
-                    const progressInterval = setInterval(() => {
-                        progress += 10;
-                        if (progress >= 100) {
-                            clearInterval(progressInterval);
-                            navigate("/complete-authentication", { state: { success: true } });
-                        }
-                    }, 500);
-                }
+            // Determine state based on received data
+            if (data.drunk === 0) {
+                alcoholLevel = "drunk";
+            } else if (data.sober === 0) {
+                alcoholLevel = "sober";
             }
+    
+            // Check if we already processed this value
+            const storedAlcoholStatus = localStorage.getItem("alcoholStatus");
+            if (storedAlcoholStatus === alcoholLevel) return;
+    
+            // Update state and local storage
+            updateState({ alcoholData: { alcoholLevel } });
+            localStorage.setItem("alcoholStatus", alcoholLevel);
+    
+            // Start circular progress animation and navigate
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += 10;
+                if (progress >= 100) {
+                    clearInterval(progressInterval);
+                    navigate("/complete-authentication", { state: { success: true } });
+                }
+            }, 500);
+        }, {
+            onlyOnce: false, // ✅ Ensures Firebase keeps listening
         });
     
-        return () => unsubscribe(); // ✅ Отписка при размонтировании или смене состояния
     }, [state.currentState, updateState, navigate]);
     
 
