@@ -157,39 +157,43 @@ export const useHealthCheck = (): HealthCheckState & {
             const data = snapshot.val();
             if (!data) return; // Exit if no data is received
     
+            console.log("Received alcohol data:", data);
+    
             let alcoholLevel = "undefined";
     
-            // Correctly process values based on your logs
-            if (data.sober === 0) {
-                alcoholLevel = "sober";
-            } else if (data.drunk === 0) {
+            // Determine if the person is drunk or sober based on received data
+            if (data.drunk === 0) {
                 alcoholLevel = "drunk";
+            } else if (data.sober === 0) {
+                alcoholLevel = "sober";
             }
     
-            // Log for debugging
-            console.log("Received alcohol data:", data);
             console.log("Determined alcohol level:", alcoholLevel);
     
-            // Ensure state updates only when new data is detected
-            if (alcoholLevel !== "undefined" && alcoholLevel !== state.alcoholData.alcoholLevel) {
-                updateState({ alcoholData: { alcoholLevel } });
-                localStorage.setItem("alcoholStatus", alcoholLevel);
+            // Ignore cases where we still don't have a valid drunk/sober state
+            if (alcoholLevel === "undefined") return;
     
-                // Start circular progress and navigate
-                let progress = 0;
-                const progressInterval = setInterval(() => {
-                    progress += 10;
-                    if (progress >= 100) {
-                        clearInterval(progressInterval);
-                        navigate("/complete-authentication", { state: { success: true } });
-                    }
-                }, 500);
-            }
-        }, {
-            onlyOnce: false, // Ensure continuous listening
+            // Check if we already processed this value
+            const storedAlcoholStatus = localStorage.getItem("alcoholStatus");
+            if (storedAlcoholStatus === alcoholLevel) return;
+    
+            // Update state and save new value
+            updateState({ alcoholData: { alcoholLevel } });
+            localStorage.setItem("alcoholStatus", alcoholLevel);
+    
+            // Start circular progress animation and navigate
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += 10;
+                if (progress >= 100) {
+                    clearInterval(progressInterval);
+                    navigate("/complete-authentication", { state: { success: true } });
+                }
+            }, 500);
         });
     
-    }, [state.currentState, state.alcoholData.alcoholLevel, updateState, navigate]);
+    }, [state.currentState, updateState, navigate]);
+    
     
 
     useEffect(() => {
