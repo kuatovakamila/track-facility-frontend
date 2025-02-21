@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
-import { getDatabase, ref, onValue, off } from "firebase/database";
+import { ref, onValue, off } from "firebase/database";
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
-
+import { db } from "./firebase";
 // Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
@@ -143,7 +143,6 @@ export const useHealthCheck = (): HealthCheckState & {
 				clearInterval(stabilityInterval);
 			};
 		} else if (state.currentState === "ALCOHOL" && !refs.isAlcoholFinalized) {
-			const db = getDatabase();
 			const alcoholRef = ref(db, "alcohol_value");
 
 			const unsubscribe = onValue(alcoholRef, (snapshot) => {
