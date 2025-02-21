@@ -138,37 +138,42 @@ export const useHealthCheck = (): HealthCheckState & {
     
             console.log("📡 Alcohol data received from Firebase:", data);
     
-            // ✅ Ensure immediate state update before anything else
-            let alcoholStatus = "Не определено";
-            if (data.sober === 0) alcoholStatus = "Трезвый";
-            else if (data.drunk === 0) alcoholStatus = "Пьяный";
+            // ✅ Check if a final state is already set to prevent overwriting
+            if (refs.alcoholMeasured) {
+                console.log("⚠️ Alcohol measurement already finalized, ignoring further updates.");
+                return;
+            }
     
-            // ✅ Log the change before setting state
+            let alcoholStatus = "Не определено";
+    
+            // ✅ Only update if a valid final state is detected
+            if (data.sober === 0) {
+                alcoholStatus = "Трезвый";
+            } else if (data.drunk === 0) {
+                alcoholStatus = "Пьяный";
+            } else {
+                console.log("❌ No valid alcohol level detected, skipping update.");
+                return;
+            }
+    
             console.log(`🛠 Updating alcohol level state: ${alcoholStatus}`);
     
+            // ✅ Update state and prevent further changes
             updateState((prev: HealthCheckState) => ({
                 ...prev,
                 alcoholData: { alcoholLevel: alcoholStatus },
             }));
     
-            // ✅ Ensure state is updated BEFORE clearing timeout
-            setTimeout(() => {
-                console.log(`📡 Alcohol Level Displayed (After State Update): ${alcoholStatus}`);
-            }, 500); // Small delay to confirm state change
+            refs.alcoholMeasured = true; // 🚨 Prevent further updates
     
             clearTimeout(refs.timeout!);
     
-            // ✅ Prevents re-navigation if already measured
-            if (!refs.alcoholMeasured && (data.sober === 0 || data.drunk === 0)) {
-                refs.alcoholMeasured = true;
-                console.log(`✅ Alcohol measurement finalized as "${alcoholStatus}". Starting progress animation...`);
-    
-                // ✅ Delay navigation to ensure UI updates
-                setTimeout(() => {
-                    console.log("🎯 Progress bar completed. Navigating...");
-                    navigate("/complete-authentication");
-                }, 3000);
-            }
+            // ✅ Delay navigation to allow UI to update
+            setTimeout(() => {
+                console.log(`📡 Alcohol Level Displayed (After State Update): ${alcoholStatus}`);
+                console.log("🎯 Progress bar completed. Navigating...");
+                navigate("/complete-authentication");
+            }, 3000);
         });
     
         return () => {
@@ -177,7 +182,6 @@ export const useHealthCheck = (): HealthCheckState & {
             clearTimeout(refs.timeout!);
         };
     }, [navigate, handleTimeout]);
-    
     
     
 	useEffect(() => {
