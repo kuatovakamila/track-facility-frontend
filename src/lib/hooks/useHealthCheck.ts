@@ -180,48 +180,45 @@ export const useHealthCheck = (): HealthCheckState & {
             clearInterval(stabilityInterval);
         };
     }, [state.currentState, state.stabilityTime, handleTimeout, handleDataEvent, setupSocketForState, updateState]);
-
-    // Listen for alcohol data and finalize process
     useEffect(() => {
         if (state.currentState !== "ALCOHOL") return;
-
-        const alcoholRef = ref(db, "alcohol_value");
-
+    
+        const alcoholRef = ref(db, "alcohol_data");
+    
         onValue(alcoholRef, (snapshot) => {
             const data = snapshot.val();
-            if (!data) return;
-
+            if (!data) return; // Exit if no data is received
+    
             console.log("📡 Received alcohol data:", data);
-
-            let alcoholLevel = "undefined";
-
-            if (data.sober === 0) {
-                alcoholLevel = "sober"; // Correct detection of sober state
-            } else if (data.drunk === 0) {
-                alcoholLevel = "drunk"; // Correct detection of drunk state
+    
+            let alcoholLevel = state.alcoholData.alcoholLevel; // Keep the existing value
+    
+            // ✅ Detect and lock the first valid state
+            if (data.sober === 0 && alcoholLevel !== "sober") {
+                alcoholLevel = "sober";
+            } else if (data.drunk === 0 && alcoholLevel !== "drunk") {
+                alcoholLevel = "drunk";
             }
-
+    
             console.log("✅ Determined alcohol level:", alcoholLevel);
-
+    
+            // ❌ Ignore cases where data is still in an undefined state
             if (alcoholLevel === "undefined") return;
-
+    
+            // ✅ Ensure we only process a new state ONCE
             const storedAlcoholStatus = localStorage.getItem("alcoholStatus");
             if (storedAlcoholStatus === alcoholLevel) return;
-
+    
+            // ✅ Save the final detected status and prevent further changes
             updateState({ alcoholData: { alcoholLevel } });
             localStorage.setItem("alcoholStatus", alcoholLevel);
-
-            // Smoothly complete circular progress and finalize authentication
-            let progress = 0;
-            const progressInterval = setInterval(() => {
-                progress += 10;
-                if (progress >= 100) {
-                    clearInterval(progressInterval);
-                    handleComplete(); // ✅ Call handleComplete() once
-                }
-            }, 500);
+    
+            // ✅ Immediately complete the process after detecting final state
+            handleComplete();
         });
+    
     }, [state.currentState, updateState, handleComplete]);
+    
 
     useEffect(() => {
         setSecondsLeft(15);
