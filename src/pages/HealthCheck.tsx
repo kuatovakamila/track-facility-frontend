@@ -1,10 +1,9 @@
-import { useEffect } from "react";
 import { useHealthCheck } from "../lib/hooks/useHealthCheck";
 import { Header } from "../components/Header";
 import { LoadingCircle } from "../components/LoadingCircle";
 import { STATES } from "../lib/constants";
 import { motion, AnimatePresence } from "framer-motion";
-import type { Icon } from "@phosphor-icons/react";
+
 
 const containerVariants = {
 	hidden: { opacity: 0 },
@@ -35,38 +34,15 @@ export default function HealthCheck() {
 		handleComplete,
 	} = useHealthCheck();
 
-	const state = STATES[currentState] as {
-		title: string;
-		subtitle: string;
-		icon: Icon;
-		value: string;
-		unit: string;
-	};
+	const state = STATES[currentState]; // ✅ Fix TypeScript error
 
 	let displayValue: string | number | null = null;
-
 	if (currentState === "TEMPERATURE" && temperatureData) {
 		displayValue = Number(temperatureData.temperature);
 	} else if (currentState === "ALCOHOL" && alcoholData) {
 		displayValue = alcoholData.alcoholLevel;
 		console.log({ displayValue });
 	}
-
-	// Handle redirection to complete-authentication after the alcohol test is complete
-	useEffect(() => {
-		if (currentState === "ALCOHOL" && stabilityTime >= MAX_STABILITY_TIME) {
-			window.location.href = "/complete-authentication";
-		}
-	}, [currentState, stabilityTime]);
-
-	// Function to handle the completion of the loading circle and trigger the transition
-	const handleLoadingComplete = () => {
-		if (currentState === "ALCOHOL" && stabilityTime >= MAX_STABILITY_TIME) {
-			window.location.href = "/complete-authentication";
-		} else {
-			handleComplete(); // Proceed with the next state
-		}
-	};
 
 	return (
 		<div className="min-h-screen bg-black text-white flex flex-col">
@@ -103,12 +79,13 @@ export default function HealthCheck() {
 				<div className="flex flex-col items-center gap-4">
 					<LoadingCircle
 						key={currentState}
-						icon={state.icon}
+						icon={state.icon} // ✅ Use `state.icon` directly
 						value={displayValue ?? "loading"}
-						unit={state.unit}
+						unit={state.unit} // ✅ Use `state.unit` directly
 						progress={(stabilityTime / MAX_STABILITY_TIME) * 100}
-						onComplete={handleLoadingComplete}
+						onComplete={handleComplete}
 					/>
+
 					{!displayValue && (
 						<span className="text-sm text-gray-400">
 							{`Осталось ${secondsLeft} ${
