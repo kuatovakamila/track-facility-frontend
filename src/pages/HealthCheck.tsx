@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useHealthCheck } from "../lib/hooks/useHealthCheck";
 import { Header } from "../components/Header";
 import { LoadingCircle } from "../components/LoadingCircle";
@@ -28,7 +29,6 @@ export default function HealthCheck() {
 	const {
 		currentState,
 		stabilityTime,
-		// bpmData,
 		temperatureData,
 		alcoholData,
 		secondsLeft,
@@ -44,15 +44,29 @@ export default function HealthCheck() {
 	};
 
 	let displayValue: string | number | null = null;
-	// if (currentState === "PULSE" && bpmData) {
-	// 	displayValue = Number(bpmData.bpm);
-	// } else
+
 	if (currentState === "TEMPERATURE" && temperatureData) {
 		displayValue = Number(temperatureData.temperature);
 	} else if (currentState === "ALCOHOL" && alcoholData) {
 		displayValue = alcoholData.alcoholLevel;
 		console.log({ displayValue });
 	}
+
+	// Навигация при завершении теста на алкоголь (без useRouter)
+	useEffect(() => {
+		if (currentState === "ALCOHOL" && stabilityTime >= MAX_STABILITY_TIME) {
+			window.location.href = "/complete-authentication";
+		}
+	}, [currentState, stabilityTime]);
+
+	// Обновленная функция handleComplete для перехода
+	const handleLoadingComplete = () => {
+		if (currentState === "ALCOHOL") {
+			window.location.href = "/complete-authentication";
+		} else {
+			handleComplete();
+		}
+	};
 
 	return (
 		<div className="min-h-screen bg-black text-white flex flex-col">
@@ -93,7 +107,7 @@ export default function HealthCheck() {
 						value={displayValue ?? "loading"}
 						unit={state.unit}
 						progress={(stabilityTime / MAX_STABILITY_TIME) * 100}
-						onComplete={handleComplete}
+						onComplete={handleLoadingComplete} // ✅ Измененная функция
 					/>
 					{!displayValue && (
 						<span className="text-sm text-gray-400">
