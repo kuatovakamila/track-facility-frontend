@@ -26,7 +26,7 @@ type HealthCheckState = {
 	secondsLeft: number;
 };
 
-const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
+// const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
 
 const configureSocketListeners = (
 	socket: Socket,
@@ -56,7 +56,7 @@ export const useHealthCheck = (): HealthCheckState & {
 		temperatureData: { temperature: 0 },
 		alcoholData: { alcoholLevel: "Не определено" },
 	});
-	const [secondsLeft, setSecondsLeft] = useState(15);
+	const [secondsLeft, ] = useState(15);
 
 	const refs = useRef({
 		socket: null as Socket | null,
@@ -98,6 +98,18 @@ export const useHealthCheck = (): HealthCheckState & {
 
 			const newStabilityTime = Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME);
 
+			// ✅ Prevent double execution when switching states
+			if (state.currentState === "TEMPERATURE" && state.stabilityTime >= MAX_STABILITY_TIME) {
+				console.log("🚀 Temperature stabilized. Transitioning to Alcohol check...");
+				setTimeout(() => {
+					if (state.currentState === "TEMPERATURE") { // Ensure we haven't already transitioned
+						updateState({ currentState: "ALCOHOL", stabilityTime: 0 });
+						refs.socket?.disconnect(); // ✅ Stop the socket when transitioning
+					}
+				}, 500);
+				return;
+			}
+
 			updateState({
 				stabilityTime: newStabilityTime,
 				temperatureData:
@@ -105,19 +117,6 @@ export const useHealthCheck = (): HealthCheckState & {
 						? { temperature: Number(data.temperature!) }
 						: state.temperatureData,
 			});
-
-			// ✅ If temperature stabilizes, move to the next step (Alcohol)
-			if (
-				state.currentState === "TEMPERATURE" &&
-				newStabilityTime >= MAX_STABILITY_TIME
-			) {
-				setTimeout(() => {
-					const nextIndex = STATE_SEQUENCE.indexOf(state.currentState) + 1;
-					if (nextIndex < STATE_SEQUENCE.length) {
-						updateState({ currentState: STATE_SEQUENCE[nextIndex], stabilityTime: 0 });
-					}
-				}, 500);
-			}
 		},
 		[state.currentState, state.stabilityTime, state.temperatureData, updateState, handleTimeout]
 	);
@@ -133,6 +132,8 @@ export const useHealthCheck = (): HealthCheckState & {
 	);
 
 	const listenToAlcoholData = useCallback(() => {
+		if (refs.alcoholMeasured) return; // ✅ Prevent duplicate listeners
+
 		const alcoholRef = ref(db, "alcohol_value");
 		console.log("📡 Listening to Firebase alcohol data...");
 
@@ -161,7 +162,10 @@ export const useHealthCheck = (): HealthCheckState & {
 			if (!refs.alcoholMeasured && (data.sober === 0 || data.drunk === 0)) {
 				refs.alcoholMeasured = true;
 				console.log("✅ Alcohol measurement finalized. Proceeding to completion...");
-				setTimeout(handleComplete, 500);
+				setTimeout(() => {
+					off(alcoholRef, "value", unsubscribe); // ✅ Remove listener before navigating
+					handleComplete();
+				}, 500);
 			}
 		});
 
@@ -174,6 +178,12 @@ export const useHealthCheck = (): HealthCheckState & {
 
 	useEffect(() => {
 		refs.hasTimedOut = false;
+
+		// ✅ Prevent setting up socket if already in "ALCOHOL" state
+		if (state.currentState === "ALCOHOL") {
+			listenToAlcoholData();
+			return;
+		}
 
 		const socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost:3001", {
 			transports: ["websocket"],
@@ -195,34 +205,12 @@ export const useHealthCheck = (): HealthCheckState & {
 			}
 		}, STABILITY_UPDATE_INTERVAL);
 
-		let cleanupAlcohol: (() => void) | undefined;
-		if (state.currentState === "ALCOHOL") {
-			cleanupAlcohol = listenToAlcoholData();
-		}
-
 		return () => {
 			socket.disconnect();
 			clearTimeout(refs.timeout!);
 			clearInterval(stabilityInterval);
-			if (cleanupAlcohol) cleanupAlcohol();
 		};
-	}, [
-		state.currentState,
-		state.stabilityTime,
-		handleTimeout,
-		handleDataEvent,
-		setupSocketForState,
-		listenToAlcoholData,
-		updateState,
-	]);
-
-	useEffect(() => {
-		setSecondsLeft(15);
-		const interval = setInterval(() => {
-			setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
-		}, 1000);
-		return () => clearInterval(interval);
-	}, [state.currentState]);
+	}, [state.currentState, handleTimeout, handleDataEvent, setupSocketForState, listenToAlcoholData, updateState]);
 
 	const handleComplete = useCallback(async () => {
 		if (refs.isSubmitting) return;
@@ -238,6 +226,7 @@ export const useHealthCheck = (): HealthCheckState & {
 			updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
 	};
 };
+
 
 // import { useState, useEffect, useCallback, useRef } from "react";
 // import { useNavigate } from "react-router-dom";
