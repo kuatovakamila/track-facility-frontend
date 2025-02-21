@@ -140,15 +140,13 @@ export const useHealthCheck = (): HealthCheckState & {
 		navigate("/complete-authentication", { state: { success: true } });
 	}, [state, navigate, updateState]);
 
-
     const listenToAlcoholData = useCallback(() => {
         const alcoholRef = ref(db, "alcohol_value");
         console.log("📡 Listening to Firebase alcohol data...");
     
         refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
     
-        // ✅ Правильное использование отписки
-        const unsubscribe = onValue(alcoholRef, (snapshot) => {
+        const unsubscribe = onValue(alcoholRef, async (snapshot) => {
             const data = snapshot.val();
             if (!data) {
                 console.warn("⚠️ No alcohol data received from Firebase.");
@@ -157,6 +155,7 @@ export const useHealthCheck = (): HealthCheckState & {
     
             console.log("📡 Alcohol data received from Firebase:", data);
     
+            // Если уже установлено значение, больше не обновляем
             if (refs.alcoholMeasured) {
                 console.log("✅ Alcohol status already determined, ignoring updates.");
                 return;
@@ -179,18 +178,17 @@ export const useHealthCheck = (): HealthCheckState & {
                 refs.alcoholMeasured = true;
     
                 console.log("❌ Unsubscribing from Firebase after final result.");
-                unsubscribe(); // ✅ Теперь мы используем отписку!
+                unsubscribe(); // Останавливаем подписку
     
-                setTimeout(async () => {
-                    console.log("🚀 Executing handleComplete()");
-                    await handleComplete();
-                }, 500);
+                // ✅ Гарантируем вызов handleComplete() и предотвращаем повторный цикл
+                console.log("🚀 Executing handleComplete()");
+                await handleComplete();
             }
         });
     
         return () => {
             console.log("❌ Stopping alcohol listener.");
-            unsubscribe(); // ✅ Используем отписку перед выходом
+            unsubscribe(); // Останавливаем слушателя при выходе
             clearTimeout(refs.timeout!);
         };
     }, [handleComplete, handleTimeout]);
