@@ -183,7 +183,8 @@ export const useHealthCheck = (): HealthCheckState & {
     useEffect(() => {
         if (state.currentState !== "ALCOHOL") return;
     
-        const alcoholRef = ref(db, "alcohol_value");
+        const alcoholRef = ref(db, "alcohol_data");
+        let isFinalStateSet = useRef(false); // ✅ Prevents further updates after detection
     
         const unsubscribe = onValue(alcoholRef, (snapshot) => {
             const data = snapshot.val();
@@ -202,12 +203,12 @@ export const useHealthCheck = (): HealthCheckState & {
     
             console.log("✅ Determined alcohol level:", finalAlcoholLevel);
     
-            // ❌ Ignore cases where the state is still undefined
+            // ❌ If still undefined, do NOT proceed
             if (finalAlcoholLevel === "undefined") return;
     
-            // ✅ Ensure we only process a new state ONCE
-            const storedAlcoholStatus = localStorage.getItem("alcoholStatus");
-            if (storedAlcoholStatus === finalAlcoholLevel) return;
+            // ✅ Stop updates if we already set the final state
+            if (isFinalStateSet.current) return;
+            isFinalStateSet.current = true; // Lock the state
     
             // ✅ Save FINAL detected state in `localStorage`
             localStorage.setItem("alcoholStatus", finalAlcoholLevel);
