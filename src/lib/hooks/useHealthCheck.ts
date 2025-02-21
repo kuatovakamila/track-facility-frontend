@@ -3,22 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
-import { initializeApp } from "firebase/app";
-import { getDatabase, ref, onValue } from "firebase/database";
+import { db } from "./firebase";
+import { onValue, ref } from "firebase/database";
 
-// Firebase Configuration
-const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_AUTH_DOMAIN",
-    databaseURL: "YOUR_DATABASE_URL",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID"
-};
-
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getDatabase(firebaseApp);
 
 // Constants
 const MAX_STABILITY_TIME = 7;
@@ -161,27 +148,27 @@ export const useHealthCheck = (): HealthCheckState & {
             clearInterval(stabilityInterval);
         };
     }, [state.currentState, state.stabilityTime, handleTimeout, handleDataEvent, setupSocketForState, refs, updateState]);
-
     useEffect(() => {
         if (state.currentState !== "ALCOHOL") return;
-
+    
         const alcoholRef = ref(db, "alcohol_data");
+    
         const unsubscribe = onValue(alcoholRef, (snapshot) => {
             const data = snapshot.val();
             if (data) {
                 let alcoholLevel = "undefined";
-
+    
                 if (data.drunk === 1) {
                     alcoholLevel = "drunk";
                 } else if (data.sober === 1) {
                     alcoholLevel = "sober";
                 }
-
+    
                 if (alcoholLevel !== "undefined") {
                     updateState({ alcoholData: { alcoholLevel } });
                     localStorage.setItem("alcoholStatus", alcoholLevel);
-
-                    // Start progress bar simulation
+    
+                    // Плавное завершение прогресса и навигация
                     let progress = 0;
                     const progressInterval = setInterval(() => {
                         progress += 10;
@@ -193,9 +180,10 @@ export const useHealthCheck = (): HealthCheckState & {
                 }
             }
         });
-
-        return () => unsubscribe();
+    
+        return () => unsubscribe(); // ✅ Отписка при размонтировании или смене состояния
     }, [state.currentState, updateState, navigate]);
+    
 
     useEffect(() => {
         setSecondsLeft(15);
@@ -249,6 +237,9 @@ export const useHealthCheck = (): HealthCheckState & {
             }),
     };
 };
+
+
+
 
 
 // import { useState, useEffect, useCallback, useRef } from "react";
