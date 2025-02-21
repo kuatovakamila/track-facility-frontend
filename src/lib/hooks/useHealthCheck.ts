@@ -190,16 +190,16 @@ export const useHealthCheck = (): HealthCheckState & {
 			}
 		}, STABILITY_UPDATE_INTERVAL);
 
-		let cleanupAlcohol: (() => void) | undefined;
-		if (state.currentState === "ALCOHOL") {
-			cleanupAlcohol = listenToAlcoholData();
-		}
+		// let cleanupAlcohol: (() => void) | undefined;
+		// if (state.currentState === "ALCOHOL") {
+		// 	cleanupAlcohol = listenToAlcoholData();
+		// }
 
 		return () => {
 			socket.disconnect();
 			clearTimeout(refs.timeout!);
 			clearInterval(stabilityInterval);
-			if (cleanupAlcohol) cleanupAlcohol();
+			// if (cleanupAlcohol) cleanupAlcohol();
 		};
 	}, [
 		state.currentState,
@@ -239,7 +239,7 @@ export const useHealthCheck = (): HealthCheckState & {
 			if (!faceId) throw new Error("Face ID not found");
 
 			const response = await fetch(
-				`${import.meta.env.VITE_SERVER_URL}/health`|| 'http://localhost:3001',
+				`${import.meta.env.VITE_SERVER_URL}/health`|| 'http://localhost:3001/health',
 				{
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
