@@ -161,21 +161,25 @@ export const useHealthCheck = (): HealthCheckState & {
                 return;
             }
     
-            let alcoholStatus = state.alcoholData.alcoholLevel;
+            let alcoholStatus = "Не определено";
     
-            if (data.sober === 0) alcoholStatus = "Трезвый";
-            else if (data.drunk === 0) alcoholStatus = "Пьяный";
+            if (data.sober === 0) {
+                alcoholStatus = "Трезвый";
+            } else if (data.drunk === 0) {
+                alcoholStatus = "Пьяный";
+            }
     
-            if (alcoholStatus !== "Не определено" && alcoholStatus !== state.alcoholData.alcoholLevel) {
+            // ✅ Если найдено финальное значение, обновляем состояние и фиксируем результат
+            if (alcoholStatus !== "Не определено") {
                 console.log("✅ Final alcohol status detected:", alcoholStatus);
                 
+                refs.alcoholMeasured = true; // ✅ Фиксируем результат, чтобы больше не обновлять
+    
                 updateState({
                     alcoholData: { alcoholLevel: alcoholStatus },
                 });
     
                 clearTimeout(refs.timeout!);
-    
-                refs.alcoholMeasured = true; // ✅ Фиксируем результат, чтобы больше не обновлять
     
                 console.log("❌ Unsubscribing from Firebase after final result.");
                 unsubscribe(); // ✅ Останавливаем подписку на Firebase
