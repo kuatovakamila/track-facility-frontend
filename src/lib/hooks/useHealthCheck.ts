@@ -13,7 +13,7 @@ const STABILITY_UPDATE_INTERVAL = 1000;
 const TIMEOUT_MESSAGE =
     "Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
 
-// const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
+const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
 
 type SensorData = {
     temperature?: string;
@@ -115,16 +115,15 @@ export const useHealthCheck = (): HealthCheckState & {
         [handleDataEvent, handleTimeout]
     );
 
-    // Handle completion when a final state is detected
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
         refs.isSubmitting = true;
-
+    
         try {
             refs.socket?.disconnect();
             const faceId = localStorage.getItem("faceId");
             if (!faceId) throw new Error("Face ID not found");
-
+    
             localStorage.setItem(
                 "results",
                 JSON.stringify({
@@ -132,13 +131,24 @@ export const useHealthCheck = (): HealthCheckState & {
                     alcohol: state.alcoholData.alcoholLevel,
                 })
             );
-
-            navigate("/complete-authentication", { state: { success: true } });
+    
+            // ✅ Move to the next state instead of repeating TEMPERATURE
+            const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
+            if (currentIndex < STATE_SEQUENCE.length - 1) {
+                updateState({
+                    currentState: STATE_SEQUENCE[currentIndex + 1], // Move to the next step
+                    stabilityTime: 0,
+                });
+            } else {
+                // ✅ If the last step (ALCOHOL) is completed, finalize
+                navigate("/complete-authentication", { state: { success: true } });
+            }
         } catch (error) {
             console.error("Submission error:", error);
             refs.isSubmitting = false;
         }
-    }, [state, navigate]);
+    }, [state, navigate, refs, updateState]);
+    
 
     // Initialize WebSocket for temperature detection
     useEffect(() => {
