@@ -161,7 +161,7 @@ export const useHealthCheck = (): HealthCheckState & {
     
             let alcoholLevel = "undefined";
     
-            // Determine if the person is drunk or sober based on received data
+            // Correctly process values based on the received data
             if (data.drunk === 0) {
                 alcoholLevel = "drunk";
             } else if (data.sober === 0) {
@@ -181,18 +181,20 @@ export const useHealthCheck = (): HealthCheckState & {
             updateState({ alcoholData: { alcoholLevel } });
             localStorage.setItem("alcoholStatus", alcoholLevel);
     
-            // Start circular progress animation and navigate
+            // Start circular progress animation and handle completion
             let progress = 0;
             const progressInterval = setInterval(() => {
                 progress += 10;
                 if (progress >= 100) {
                     clearInterval(progressInterval);
-                    navigate("/complete-authentication", { state: { success: true } });
+                    handleComplete(); // ✅ Handle final completion here instead of navigating back to temperature
                 }
             }, 500);
         });
     
     }, [state.currentState, updateState, navigate]);
+    
+    
     
     
 
