@@ -224,7 +224,7 @@ export const useHealthCheck = (): HealthCheckState & {
             const faceId = localStorage.getItem("faceId");
             if (!faceId) throw new Error("Face ID not found");
 
-            const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/health`, {
+            const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/health` || 'http://localhost:3001/health', {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
