@@ -183,7 +183,7 @@ export const useHealthCheck = (): HealthCheckState & {
     useEffect(() => {
         if (state.currentState !== "ALCOHOL") return;
     
-        const alcoholRef = ref(db, "alcohol_data");
+        const alcoholRef = ref(db, "alcohol_value");
         let isFinalStateSet = useRef(false); // ✅ Prevents further updates after detection
     
         const unsubscribe = onValue(alcoholRef, (snapshot) => {
