@@ -160,9 +160,10 @@ export const useHealthCheck = (): HealthCheckState & {
 
 				clearTimeout(refs.timeout!);
 				unsubscribe();
+                navigate("/complete-authentication", { state: { success: true } })
 
-				console.log("🚀 Executing handleComplete()");
-				handleComplete();
+				// console.log("🚀 Executing handleComplete()");
+				// handleComplete();
 			}
 		});
 
