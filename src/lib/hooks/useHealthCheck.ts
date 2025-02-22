@@ -3,10 +3,23 @@ import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
-import { ref, onValue } from "firebase/database";
-import { db } from "./firebase";
+import { getDatabase, ref, onValue, off } from "firebase/database";
+import { initializeApp } from "firebase/app";
+
+// Firebase Configuration (Replace with your own)
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_AUTH_DOMAIN",
+    databaseURL: "YOUR_DATABASE_URL",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_STORAGE_BUCKET",
+    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+    appId: "YOUR_APP_ID",
+};
 
 // Initialize Firebase
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getDatabase(firebaseApp);
 
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
@@ -69,6 +82,7 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
 
+        console.warn("⏳ Timeout reached: No valid alcohol data received.");
         navigate("/");
     }, [navigate]);
 
@@ -95,10 +109,15 @@ export const useHealthCheck = (): HealthCheckState & {
     const listenToAlcoholData = useCallback(() => {
         const alcoholRef = ref(db, "alcohol_value"); // Change path if needed
 
-        onValue(alcoholRef, (snapshot) => {
+        console.log("🔄 Listening for alcohol data from Firebase...");
+
+        const unsubscribe = onValue(alcoholRef, (snapshot) => {
             const data: FirebaseAlcoholData | null = snapshot.val();
 
-            if (!data) return;
+            if (!data) {
+                console.warn("⚠️ No alcohol data received.");
+                return;
+            }
 
             console.log("📡 Alcohol data received from Firebase:", data);
 
@@ -107,7 +126,11 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcoholStatus = "Трезвый";
             } else if (data.drunk === 0) {
                 alcoholStatus = "Пьяный";
+            } else {
+                return; // ⏳ Continue waiting until one becomes 0
             }
+
+            console.log(`✅ Valid alcohol data received: ${alcoholStatus}`);
 
             setState((prev) => ({
                 ...prev,
@@ -115,11 +138,20 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcoholData: { alcoholLevel: alcoholStatus },
             }));
 
-            if (state.currentState === "ALCOHOL") {
-                setTimeout(handleComplete, 300);
-            }
+            // ✅ Stop listening after getting valid data
+            off(alcoholRef);
+            setTimeout(handleComplete, 300);
         });
-    }, []);
+
+        // Handle timeout if no data changes
+        refs.timeout = setTimeout(() => {
+            console.warn("⏳ Timeout: No valid alcohol data received.");
+            off(alcoholRef); // Stop listening
+            handleTimeout();
+        }, SOCKET_TIMEOUT);
+
+        return unsubscribe;
+    }, [handleTimeout]);
 
     useEffect(() => {
         if (!refs.socket) {
@@ -203,12 +235,6 @@ export const useHealthCheck = (): HealthCheckState & {
             console.error("❌ Submission error:", error);
             toast.error("Ошибка отправки данных. Проверьте соединение.");
             refs.isSubmitting = false;
-        } finally {
-            setTimeout(() => {
-                console.log("🛑 Now disconnecting WebSocket after authentication is fully completed...");
-                refs.socket?.disconnect();
-                refs.socket = null;
-            }, 5000);
         }
     }, [state, navigate, updateState]);
 
