@@ -3,12 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
-import { ref, get } from "firebase/database";
+import { ref, onValue } from "firebase/database";
 import { db } from "./firebase";
 
 const MAX_STABILITY_TIME = 7;
-const SOCKET_TIMEOUT = 15000;  // ✅ Timeout for WebSocket connection
-const POLLING_INTERVAL = 2000; // ✅ Poll Firebase every 2 seconds
+const SOCKET_TIMEOUT = 15000; // ✅ Timeout for WebSocket connection
 
 type SensorData = {
     temperature?: string;
@@ -49,10 +48,10 @@ export const useHealthCheck = (): HealthCheckState & {
 
     const refs = useRef({
         socket: null as Socket | null,
-        timeout: null as NodeJS.Timeout | null,
         stopPolling: false,
         completed: false,
         hasTimedOut: false,
+        timeout: null as NodeJS.Timeout | null,
     }).current;
 
     const updateState = useCallback(
@@ -91,57 +90,50 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.stopPolling) return;
 
         const alcoholRef = ref(db, "alcohol_value");
-        console.log("🔄 Polling for alcohol data from Firebase...");
+        console.log("🔄 Listening for alcohol data from Firebase...");
 
-        const fetchAlcoholData = async () => {
-            if (refs.stopPolling) return;
+        const unsubscribe = onValue(alcoholRef, (snapshot) => {
+            const data: FirebaseAlcoholData | null = snapshot.val();
 
-            try {
-                const snapshot = await get(alcoholRef);
-                const data: FirebaseAlcoholData | null = snapshot.val();
+            console.log("🔥 Firebase Alcohol Data:", data);
 
-                console.log("🔥 Raw Firebase Data:", data);
-
-                if (!data) {
-                    console.warn("⚠️ No alcohol data received. Retrying...");
-                    setTimeout(fetchAlcoholData, POLLING_INTERVAL);
-                    return;
-                }
-
-                const sober = Number(data.sober ?? -1);
-                const drunk = Number(data.drunk ?? -1);
-
-                console.log(`🔍 Processed values → Sober: ${sober}, Drunk: ${drunk}`);
-
-                let alcoholStatus = "Не определено";
-                if (sober === 0) {
-                    alcoholStatus = "Трезвый";
-                } else if (drunk === 0) {
-                    alcoholStatus = "Пьяный";
-                } else {
-                    console.warn("⚠️ No valid alcohol status yet. Retrying...");
-                    setTimeout(fetchAlcoholData, POLLING_INTERVAL);
-                    return;
-                }
-
-                console.log(`✅ Alcohol Status Set: ${alcoholStatus}`);
-
-                refs.stopPolling = true; // ✅ Stop further polling
-
-                setState((prev) => ({
-                    ...prev,
-                    stabilityTime: MAX_STABILITY_TIME,
-                    alcoholData: { alcoholLevel: alcoholStatus },
-                }));
-
-                setTimeout(handleComplete, 300);
-            } catch (error) {
-                console.error("❌ Firebase Read Error:", error);
-                setTimeout(fetchAlcoholData, POLLING_INTERVAL);
+            if (!data || typeof data !== "object") {
+                console.warn("⚠️ No valid alcohol data received. Waiting...");
+                return;
             }
-        };
 
-        fetchAlcoholData();
+            const sober = Number(data.sober ?? -1);
+            const drunk = Number(data.drunk ?? -1);
+
+            console.log(`🔍 Extracted Values → Sober: ${sober}, Drunk: ${drunk}`);
+
+            let alcoholStatus = "Не определено";
+            if (sober === 0) {
+                alcoholStatus = "Трезвый";
+            } else if (drunk === 0) {
+                alcoholStatus = "Пьяный";
+            } else {
+                console.warn("⚠️ No valid alcohol status yet. Still listening...");
+                return;
+            }
+
+            console.log(`✅ Alcohol Status Set: ${alcoholStatus}`);
+
+            refs.stopPolling = true;
+            setState((prev) => ({
+                ...prev,
+                stabilityTime: MAX_STABILITY_TIME,
+                alcoholData: { alcoholLevel: alcoholStatus },
+            }));
+
+            setTimeout(handleComplete, 300);
+            unsubscribe(); // ✅ Stop listening once valid data is received
+        });
+
+        return () => {
+            console.log("🛑 Unsubscribing from Firebase updates.");
+            unsubscribe();
+        };
     }, []);
 
     useEffect(() => {
@@ -221,12 +213,13 @@ export const useHealthCheck = (): HealthCheckState & {
             toast.error("Ошибка отправки данных. Проверьте соединение.");
             refs.completed = false;
         }
-    }, [state, navigate, updateState]);
+    }, [state, navigate]);
 
-    return {
-        ...state,
-        handleComplete,
-        setCurrentState: (newState) =>
-            updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
+    const setCurrentState = (newState: React.SetStateAction<StateKey>) => {
+        updateState({
+            currentState: typeof newState === "function" ? newState(state.currentState) : newState,
+        });
     };
+
+    return { ...state, handleComplete, setCurrentState };
 };
