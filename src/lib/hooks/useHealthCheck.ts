@@ -6,8 +6,6 @@ import { StateKey } from "../constants";
 import toast from "react-hot-toast";
 import { db } from "./firebase"; 
 
-// Initialize Firebase
-
 // Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
@@ -33,7 +31,7 @@ export const useHealthCheck = (): HealthCheckState & {
 } => {
     const navigate = useNavigate();
     const [state, setState] = useState<HealthCheckState>({
-        currentState: STATE_SEQUENCE[0], // ✅ Start with first state in sequence
+        currentState: STATE_SEQUENCE[0], // ✅ Start with first state
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: "Не определено" },
@@ -49,6 +47,7 @@ export const useHealthCheck = (): HealthCheckState & {
         hasNavigated: false,
         sessionCount: 0,
         alcoholReceived: false,
+        temperatureReceived: false, // ✅ Track if temperature has been processed
     }).current;
 
     const updateState = useCallback(
@@ -64,7 +63,7 @@ export const useHealthCheck = (): HealthCheckState & {
         navigate("/");
     }, [navigate]);
 
-    // ✅ Handles state sequence transition
+    // ✅ Handles state transition
     const moveToNextState = useCallback(() => {
         const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
         if (currentIndex < STATE_SEQUENCE.length - 1) {
@@ -74,12 +73,13 @@ export const useHealthCheck = (): HealthCheckState & {
         }
     }, [state.currentState, updateState]);
 
-    // ✅ Handle temperature data and move to ALCOHOL when stable
+    // ✅ Handles temperature data and ensures it runs **only once**
     const handleTemperatureData = useCallback(
         (data: SensorData) => {
-            if (!data?.temperature) return;
+            if (!data?.temperature || refs.temperatureReceived) return; // ✅ Process only once
             console.log("📡 Temperature data received:", data);
 
+            refs.temperatureReceived = true;
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
@@ -103,31 +103,27 @@ export const useHealthCheck = (): HealthCheckState & {
         [handleTimeout, moveToNextState]
     );
 
+    // ✅ Handles alcohol data and ensures it runs only **once per session**
     const handleAlcoholData = useCallback((snapshot: DataSnapshot) => {
         const data = snapshot.val();
-        if (!data) return;
-    
+        if (!data || refs.alcoholReceived) return; // ✅ Process only once
         console.log("📡 Alcohol data received from Firebase:", data);
-    
+
         let alcoholStatus = "Не определено";
         if (data.sober === 1 && data.drunk === 0) {
             alcoholStatus = "Трезвый";
         } else if (data.sober === 0 && data.drunk === 1) {
             alcoholStatus = "Пьяный";
         }
-    
-        // ✅ Ensure this runs only once per session
-        if (!refs.alcoholReceived) {
-            refs.alcoholReceived = true;
-    
-            updateState({
-                alcoholData: { alcoholLevel: alcoholStatus },
-                stabilityTime: MAX_STABILITY_TIME,
-            });
-    
-            console.log("✅ Alcohol data processed, transitioning...");
-            moveToNextState();
-        }
+
+        refs.alcoholReceived = true;
+        updateState({
+            alcoholData: { alcoholLevel: alcoholStatus },
+            stabilityTime: MAX_STABILITY_TIME,
+        });
+
+        console.log("✅ Alcohol data processed, transitioning...");
+        moveToNextState();
     }, [moveToNextState, updateState]);
 
     // ✅ WebSocket for TEMPERATURE
@@ -157,15 +153,27 @@ export const useHealthCheck = (): HealthCheckState & {
         };
     }, [state.currentState, handleTemperatureData]);
 
-    // ✅ Firebase for ALCOHOL
-    useEffect(() => {
-        if (state.currentState === "ALCOHOL") {
-            const alcoholRef = ref(db, "alcohol_value");
-            onValue(alcoholRef, handleAlcoholData);
+// ✅ Firebase for ALCOHOL (removes listener after first data)
+useEffect(() => {
+    if (state.currentState === "ALCOHOL") {
+        const alcoholRef = ref(db, "alcohol_value");
 
-            return () => off(alcoholRef, "value", handleAlcoholData);
-        }
-    }, [state.currentState, handleAlcoholData]);
+        // ✅ Create a function to handle data retrieval
+        const handleSnapshot = (snapshot: DataSnapshot) => {
+            handleAlcoholData(snapshot);
+
+            // ✅ Stop listening after first valid alcohol data
+            console.log("🛑 Stopping Firebase listener.");
+            off(alcoholRef, "value", handleSnapshot);
+        };
+
+        // ✅ Attach listener
+        onValue(alcoholRef, handleSnapshot);
+
+        // ✅ Cleanup function to remove listener if unmounting
+        return () => off(alcoholRef, "value", handleSnapshot);
+    }
+}, [state.currentState, handleAlcoholData]);
 
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
@@ -199,6 +207,8 @@ export const useHealthCheck = (): HealthCheckState & {
                         alcoholData: { alcoholLevel: "Не определено" },
                         secondsLeft: 15,
                     });
+
+                    refs.temperatureReceived = false;
                     refs.alcoholReceived = false;
                 }, 1000);
             }, 4000);
