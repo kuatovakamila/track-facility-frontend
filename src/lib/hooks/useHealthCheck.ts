@@ -114,7 +114,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
     useEffect(() => {
         if (!refs.socket) {
-            refs.socket = io(import.meta.env.VITE_SERVER_URL, {
+            refs.socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001', {
                 transports: ["websocket"],
                 reconnection: true,
                 reconnectionAttempts: 20,
