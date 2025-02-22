@@ -199,28 +199,30 @@ export const useHealthCheck = (): HealthCheckState & {
             return;
         }
 
-        // ✅ After "ALCOHOL", finish authentication
-        console.log("✅ Completing authentication after ALCOHOL");
+        // ✅ If we are in ALCOHOL, complete authentication instead of looping back
+        if (state.currentState === "ALCOHOL") {
+            console.log("✅ Completing authentication after ALCOHOL");
 
-        try {
-            const faceId = localStorage.getItem("faceId");
-            if (!faceId) throw new Error("❌ Face ID not found");
+            try {
+                const faceId = localStorage.getItem("faceId");
+                if (!faceId) throw new Error("❌ Face ID not found");
 
-            console.log("📡 Sending final data...");
+                console.log("📡 Sending final data...");
 
-            refs.hasNavigated = true;
-            refs.sessionCount += 1;
+                refs.hasNavigated = true;
+                refs.sessionCount += 1;
 
-            localStorage.setItem("results", JSON.stringify({
-                temperature: state.temperatureData.temperature,
-                alcohol: state.alcoholData.alcoholLevel,
-            }));
+                localStorage.setItem("results", JSON.stringify({
+                    temperature: state.temperatureData.temperature,
+                    alcohol: state.alcoholData.alcoholLevel,
+                }));
 
-            navigate("/complete-authentication", { state: { success: true } });
-        } catch (error) {
-            console.error("❌ Submission error:", error);
-            toast.error("Ошибка отправки данных. Проверьте соединение.");
-            refs.isSubmitting = false;
+                navigate("/complete-authentication", { state: { success: true } });
+            } catch (error) {
+                console.error("❌ Submission error:", error);
+                toast.error("Ошибка отправки данных. Проверьте соединение.");
+                refs.isSubmitting = false;
+            }
         }
     }, [state, navigate, updateState]);
 
