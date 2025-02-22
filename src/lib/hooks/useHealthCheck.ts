@@ -8,7 +8,6 @@ import toast from "react-hot-toast";
 
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
-const STABILITY_UPDATE_INTERVAL = 1000; // ✅ Now properly used!
 const COUNTDOWN_TIME = 15;
 
 const TIMEOUT_MESSAGE =
