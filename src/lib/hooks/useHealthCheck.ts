@@ -74,16 +74,14 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || processCompleted) return;
         refs.isSubmitting = true;
-        setProcessCompleted(true);
-    
-        console.log("🟢 handleComplete() Executed! Current State:", state.currentState);
     
         const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
+    
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             console.log("➡️ Moving to Next Step:", STATE_SEQUENCE[currentIndex + 1]);
     
             updateState({
-                currentState: STATE_SEQUENCE[currentIndex + 1],
+                currentState: STATE_SEQUENCE[currentIndex + 1], // ✅ Move to next step correctly
                 stabilityTime: 0,
             });
     
@@ -93,7 +91,12 @@ export const useHealthCheck = (): HealthCheckState & {
             return;
         }
     
+        // ✅ Only set `processCompleted` AFTER alcohol measurement
         console.log("✅ Process Completed! Navigating to /complete-authentication");
+        
+        if (state.currentState === "ALCOHOL") {
+            setProcessCompleted(true); // ✅ Mark completion only at the last step
+        }
     
         if (refs.socket) {
             console.log("🔌 Disconnecting WebSocket...");
@@ -110,6 +113,7 @@ export const useHealthCheck = (): HealthCheckState & {
             navigate("/complete-authentication", { state: { success: true } });
         }, 100);
     }, [state.currentState, navigate, updateState, processCompleted]);
+    
     
 
     const handleDataEvent = useCallback(
@@ -143,15 +147,15 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     const listenToAlcoholData = useCallback(() => {
-        if (processCompleted) return;
-        console.log("📡 Firebase Listener Activated for Alcohol Data");
+        if (processCompleted) return; // ✅ Prevents premature stopping
     
         const alcoholRef = ref(db, "alcohol_value");
+        console.log("📡 Listening to Firebase alcohol data...");
     
         refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
     
         const unsubscribe = onValue(alcoholRef, async (snapshot) => {
-            if (processCompleted) return;
+            if (processCompleted) return; // ✅ Ensures this only runs once
     
             const data = snapshot.val();
             if (!data) {
@@ -188,32 +192,47 @@ export const useHealthCheck = (): HealthCheckState & {
         };
     }, [handleComplete, handleTimeout, processCompleted]);
     
-useEffect(() => {
-    if (processCompleted) {
-        console.log("🛑 Process Already Completed. Stopping Further Execution.");
-        return;
-    }
-
-    console.log("🔄 useEffect Triggered. Current State:", state.currentState);
-
-    refs.hasTimedOut = false;
-    const socket = io("http://localhost:3001", { transports: ["websocket"], reconnection: false });
-
-    refs.socket = socket;
-    refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-    socket.on("temperature", handleDataEvent);
-
-    let cleanupAlcohol: (() => void) | undefined;
-    if (state.currentState === "ALCOHOL") cleanupAlcohol = listenToAlcoholData();
-
-    return () => {
-        console.log("🔌 Cleaning Up WebSocket and Firebase Listener...");
-        socket.disconnect();
-        clearTimeout(refs.timeout!);
-        if (cleanupAlcohol) cleanupAlcohol();
-    };
-}, [processCompleted, state.currentState, handleTimeout, listenToAlcoholData]);
-
+    useEffect(() => {
+        if (processCompleted) {
+            console.log("🛑 Process Already Completed. Stopping Further Execution.");
+            return;
+        }
+    
+        console.log("🔄 useEffect Triggered. Current State:", state.currentState);
+    
+        refs.hasTimedOut = false;
+        const socket = io("http://localhost:3001", { transports: ["websocket"], reconnection: false });
+    
+        refs.socket = socket;
+        refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+        socket.on("temperature", handleDataEvent);
+    
+        const stabilityInterval = setInterval(() => {
+            const timeSinceLastData = Date.now() - refs.lastDataTime;
+    
+            if (timeSinceLastData > STABILITY_UPDATE_INTERVAL) {
+                setState((prev) => {
+                    const decreasedStabilityTime = Math.max(prev.stabilityTime - 1, 0);
+                    setProgress((decreasedStabilityTime / MAX_STABILITY_TIME) * 100);
+    
+                    console.log("⏳ Decreasing Stability Time:", decreasedStabilityTime);
+    
+                    return { ...prev, stabilityTime: decreasedStabilityTime };
+                });
+            }
+        }, STABILITY_UPDATE_INTERVAL);
+    
+        let cleanupAlcohol: (() => void) | undefined;
+        if (state.currentState === "ALCOHOL") cleanupAlcohol = listenToAlcoholData();
+    
+        return () => {
+            console.log("🔌 Cleaning Up WebSocket and Firebase Listener...");
+            socket.disconnect();
+            clearTimeout(refs.timeout!);
+            clearInterval(stabilityInterval);
+            if (cleanupAlcohol) cleanupAlcohol();
+        };
+    }, [processCompleted, state.currentState, handleTimeout, listenToAlcoholData]);
     
 
 useEffect(() => {
