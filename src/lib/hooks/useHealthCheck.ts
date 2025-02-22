@@ -123,8 +123,7 @@ export const useHealthCheck = (): HealthCheckState & {
 			});
 		},
 		[handleDataEvent, handleTimeout]
-	);
-    const handleComplete = useCallback(async () => {
+	);const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
         refs.isSubmitting = true;
     
@@ -139,18 +138,23 @@ export const useHealthCheck = (): HealthCheckState & {
             return;
         }
     
-        // ✅ Disconnect WebSocket to prevent unwanted state resets
+        // ✅ Ensure WebSocket is completely stopped
         if (refs.socket) {
-            console.log("🔌 Disconnecting WebSocket before navigating...");
+            console.log("🔌 Disconnecting WebSocket and stopping auto-reconnect...");
             refs.socket.disconnect();
             refs.socket = null;
         }
+    
+        // ✅ Clear any active timeouts and listeners to prevent re-triggering
+        clearTimeout(refs.timeout!);
+        refs.timeout = null;
+        refs.hasTimedOut = true;
     
         console.log("🎉 Health check complete! Navigating to /complete-authentication");
     
         setTimeout(() => {
             navigate("/complete-authentication", { state: { success: true } });
-        }, 100); // Small delay to ensure state updates before navigation
+        }, 100); // Small delay to ensure cleanup before navigation
     }, [state.currentState, navigate, updateState]);
     
     
@@ -214,51 +218,53 @@ export const useHealthCheck = (): HealthCheckState & {
     
 
 	useEffect(() => {
-		refs.hasTimedOut = false;
-
-		const socket = io(
-			"http://localhost:3001",
-			{
-				transports: ["websocket"],
-				reconnection: true,
-				reconnectionAttempts: 5,
-				reconnectionDelay: 1000,
-			}
-		);
-
-		refs.socket = socket;
-		refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-
-		setupSocketForState(socket, state.currentState);
-
-		const stabilityInterval = setInterval(() => {
-			if (Date.now() - refs.lastDataTime > STABILITY_UPDATE_INTERVAL) {
-				updateState({
-					stabilityTime: Math.max(state.stabilityTime - 1, 0),
-				});
-			}
-		}, STABILITY_UPDATE_INTERVAL);
-
-		let cleanupAlcohol: (() => void) | undefined;
-		if (state.currentState === "ALCOHOL") {
-			cleanupAlcohol = listenToAlcoholData();
-		}
-
-		return () => {
-			socket.disconnect();
-			clearTimeout(refs.timeout!);
-			clearInterval(stabilityInterval);
-			if (cleanupAlcohol) cleanupAlcohol();
-		};
-	}, [
-		state.currentState,
-		state.stabilityTime,
-		handleTimeout,
-		handleDataEvent,
-		setupSocketForState,
-		listenToAlcoholData,
-		updateState,
-	]);
+        if (refs.hasTimedOut) {
+            console.log("⏳ Skipping WebSocket setup since process has completed.");
+            return;
+        }
+    
+        refs.hasTimedOut = false;
+    
+        const socket = io("http://localhost:3001", {
+            transports: ["websocket"],
+            reconnection: false, // ❌ Prevents WebSocket from reconnecting automatically
+        });
+    
+        refs.socket = socket;
+        refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+    
+        setupSocketForState(socket, state.currentState);
+    
+        const stabilityInterval = setInterval(() => {
+            if (Date.now() - refs.lastDataTime > STABILITY_UPDATE_INTERVAL) {
+                updateState({
+                    stabilityTime: Math.max(state.stabilityTime - 1, 0),
+                });
+            }
+        }, STABILITY_UPDATE_INTERVAL);
+    
+        let cleanupAlcohol: (() => void) | undefined;
+        if (state.currentState === "ALCOHOL") {
+            cleanupAlcohol = listenToAlcoholData();
+        }
+    
+        return () => {
+            console.log("🔌 Cleaning up WebSocket and Firebase listener...");
+            socket.disconnect();
+            clearTimeout(refs.timeout!);
+            clearInterval(stabilityInterval);
+            if (cleanupAlcohol) cleanupAlcohol();
+        };
+    }, [
+        state.currentState,
+        state.stabilityTime,
+        handleTimeout,
+        handleDataEvent,
+        setupSocketForState,
+        listenToAlcoholData,
+        updateState,
+    ]);
+    
 
 	useEffect(() => {
 		setSecondsLeft(15);
