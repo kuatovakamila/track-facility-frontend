@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
-import { ref, onValue } from "firebase/database";
+import { ref, get } from "firebase/database";
 import { db } from "./firebase";
 
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
+const POLLING_INTERVAL = 1000; // Poll Firebase every second
 
 type SensorData = {
     temperature?: string;
@@ -91,49 +92,54 @@ export const useHealthCheck = (): HealthCheckState & {
         [handleTimeout]
     );
 
-    const listenToAlcoholData = useCallback(() => {
+    const pollAlcoholData = useCallback(() => {
         const alcoholRef = ref(db, "alcohol_value");
 
-        console.log("🔄 Listening for alcohol data from Firebase...");
+        console.log("🔄 Polling for alcohol data from Firebase...");
 
-        const unsubscribe = onValue(alcoholRef, (snapshot) => {
-            const data: FirebaseAlcoholData | null = snapshot.val();
+        const fetchAlcoholData = async () => {
+            try {
+                const snapshot = await get(alcoholRef);
+                const data: FirebaseAlcoholData | null = snapshot.val();
 
-            if (!data) {
-                console.warn("⚠️ No alcohol data received.");
-                return;
+                if (!data) {
+                    console.warn("⚠️ No alcohol data received.");
+                    return;
+                }
+
+                console.log("📡 Alcohol data received from Firebase:", data);
+
+                let alcoholStatus = "Не определено";
+                if (data.sober === 0) {
+                    alcoholStatus = "Трезвый";
+                } else if (data.drunk === 0) {
+                    alcoholStatus = "Пьяный";
+                } else {
+                    setTimeout(fetchAlcoholData, POLLING_INTERVAL); // Retry in 1 second
+                    return;
+                }
+
+                console.log(`✅ Valid alcohol data received: ${alcoholStatus}`);
+
+                setState((prev) => ({
+                    ...prev,
+                    stabilityTime: MAX_STABILITY_TIME,
+                    alcoholData: { alcoholLevel: alcoholStatus },
+                }));
+
+                setTimeout(handleComplete, 300);
+            } catch (error) {
+                console.error("❌ Firebase read error:", error);
+                setTimeout(fetchAlcoholData, POLLING_INTERVAL); // Retry in 1 second
             }
+        };
 
-            console.log("📡 Alcohol data received from Firebase:", data);
-
-            let alcoholStatus = "Не определено";
-            if (data.sober === 0) {
-                alcoholStatus = "Трезвый";
-            } else if (data.drunk === 0) {
-                alcoholStatus = "Пьяный";
-            } else {
-                return; // ⏳ Continue waiting until one becomes 0
-            }
-
-            console.log(`✅ Valid alcohol data received: ${alcoholStatus}`);
-
-            setState((prev) => ({
-                ...prev,
-                stabilityTime: MAX_STABILITY_TIME,
-                alcoholData: { alcoholLevel: alcoholStatus },
-            }));
-
-            unsubscribe(); // ✅ Automatically stop listening once valid data is received
-            setTimeout(handleComplete, 300);
-        });
+        fetchAlcoholData(); // Start polling
 
         refs.timeout = setTimeout(() => {
             console.warn("⏳ Timeout: No valid alcohol data received.");
-            unsubscribe();
             handleTimeout();
         }, SOCKET_TIMEOUT);
-
-        return unsubscribe;
     }, [handleTimeout]);
 
     useEffect(() => {
@@ -158,13 +164,13 @@ export const useHealthCheck = (): HealthCheckState & {
         }
 
         if (state.currentState === "ALCOHOL") {
-            listenToAlcoholData();
+            pollAlcoholData();
         }
 
         return () => {
-            console.log("🛑 Cleanup function, but not stopping Firebase listener.");
+            console.log("🛑 Cleanup function, but Firebase will still be polled.");
         };
-    }, [state.currentState, handleTemperatureData, listenToAlcoholData]);
+    }, [state.currentState, handleTemperatureData, pollAlcoholData]);
 
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
