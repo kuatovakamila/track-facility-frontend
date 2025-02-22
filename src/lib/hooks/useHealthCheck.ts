@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
+import { ref, onValue } from "firebase/database";
+import { db } from "./firebase";
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
-import React from "react";
 
-const MAX_STABILITY_TIME = 7; // ✅ Stability time needed for full progress
+const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 const STABILITY_UPDATE_INTERVAL = 1000;
 const COUNTDOWN_TIME = 15;
@@ -41,8 +42,8 @@ export const useHealthCheck = (): HealthCheckState & {
 		alcoholData: { alcoholLevel: "Не определено" },
 	});
 	const [secondsLeft, setSecondsLeft] = useState(COUNTDOWN_TIME);
-	const [progress, setProgress] = useState(0); // ✅ Track progress of stabilization
-	const [processCompleted, setProcessCompleted] = useState(false); 
+	const [progress, setProgress] = useState(0);
+	const [processCompleted, setProcessCompleted] = useState(false);
 
 	const refs = useRef({
 		socket: null as Socket | null,
@@ -79,7 +80,7 @@ export const useHealthCheck = (): HealthCheckState & {
 		if (currentIndex < STATE_SEQUENCE.length - 1) {
 			updateState({ currentState: STATE_SEQUENCE[currentIndex + 1], stabilityTime: 0 });
 			setSecondsLeft(COUNTDOWN_TIME);
-			setProgress(0); // ✅ Reset progress when moving to next step
+			setProgress(0);
 			refs.isSubmitting = false;
 			return;
 		}
@@ -110,12 +111,10 @@ export const useHealthCheck = (): HealthCheckState & {
 			if (state.currentState === "TEMPERATURE" && data.temperature) {
 				const newTemperature = Number(data.temperature);
 
-				// ✅ Use functional updates to ensure the correct latest stabilityTime
 				setState((prev) => {
 					const newStabilityTime = Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME);
-					setProgress((newStabilityTime / MAX_STABILITY_TIME) * 100); // ✅ Update progress correctly
+					setProgress((newStabilityTime / MAX_STABILITY_TIME) * 100);
 
-					// ✅ If stabilized, move to next step
 					if (newStabilityTime >= MAX_STABILITY_TIME) {
 						console.log("✅ Temperature stabilized! Moving to alcohol measurement...");
 						handleComplete();
@@ -132,6 +131,53 @@ export const useHealthCheck = (): HealthCheckState & {
 		[state.currentState, handleTimeout, handleComplete]
 	);
 
+	/** ✅ Restored Alcohol Listening */
+	const listenToAlcoholData = useCallback(() => {
+		const alcoholRef = ref(db, "alcohol_value");
+		console.log("📡 Listening to Firebase alcohol data...");
+
+		refs.timeout = setTimeout(() => {
+			console.warn("⏳ No alcohol data received in time. Triggering timeout.");
+			handleTimeout();
+		}, SOCKET_TIMEOUT);
+
+		const unsubscribe = onValue(alcoholRef, (snapshot) => {
+			const data = snapshot.val();
+			if (!data) {
+				console.warn("⚠️ No valid alcohol data received from Firebase.");
+				return;
+			}
+
+			console.log("📡 Alcohol data received from Firebase:", data);
+			if (refs.alcoholMeasured) return;
+
+			let alcoholStatus = "Не определено";
+			if (data.sober === 0) alcoholStatus = "Трезвый";
+			else if (data.drunk === 0) alcoholStatus = "Пьяный";
+
+			if (alcoholStatus !== "Не определено") {
+				setState((prev) => ({
+					...prev,
+					alcoholData: { alcoholLevel: alcoholStatus },
+				}));
+
+				clearTimeout(refs.timeout!);
+				refs.alcoholMeasured = true;
+				unsubscribe();
+
+				if (state.stabilityTime >= MAX_STABILITY_TIME) {
+					console.log("🚀 Alcohol level stabilized! Executing handleComplete()");
+					handleComplete();
+				}
+			}
+		});
+
+		return () => {
+			unsubscribe();
+			clearTimeout(refs.timeout!);
+		};
+	}, [handleComplete, handleTimeout]);
+
 	useEffect(() => {
 		if (processCompleted) return;
 
@@ -144,26 +190,28 @@ export const useHealthCheck = (): HealthCheckState & {
 
 		socket.on("temperature", handleDataEvent);
 
-		// ✅ Decrease stability time if no data arrives, reducing progress
 		const stabilityInterval = setInterval(() => {
 			if (Date.now() - refs.lastDataTime > STABILITY_UPDATE_INTERVAL) {
 				setState((prev) => {
 					const decreasedStabilityTime = Math.max(prev.stabilityTime - 1, 0);
-					setProgress((decreasedStabilityTime / MAX_STABILITY_TIME) * 100); // ✅ Decrease progress
+					setProgress((decreasedStabilityTime / MAX_STABILITY_TIME) * 100);
 
 					return { ...prev, stabilityTime: decreasedStabilityTime };
 				});
 			}
 		}, STABILITY_UPDATE_INTERVAL);
 
+		let cleanupAlcohol: (() => void) | undefined;
+		if (state.currentState === "ALCOHOL") cleanupAlcohol = listenToAlcoholData();
+
 		return () => {
 			socket.disconnect();
 			clearTimeout(refs.timeout!);
 			clearInterval(stabilityInterval);
+			if (cleanupAlcohol) cleanupAlcohol();
 		};
-	}, [processCompleted, state.currentState, handleTimeout]);
+	}, [processCompleted, state.currentState, handleTimeout, listenToAlcoholData]);
 
-	// ✅ **Fix: Countdown Timer**
 	useEffect(() => {
 		setSecondsLeft(COUNTDOWN_TIME);
 		const interval = setInterval(() => {
@@ -172,13 +220,15 @@ export const useHealthCheck = (): HealthCheckState & {
 
 		return () => clearInterval(interval);
 	}, [state.currentState]);
-
-	return {
-		...state,
-		secondsLeft,
-		progress, // ✅ Return progress to be used in UI
-		handleComplete,
-		setCurrentState: (newState: React.SetStateAction<StateKey>) =>
-			updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
-	};
+    return {
+        ...state,
+        secondsLeft,
+        progress,
+        handleComplete,
+        setCurrentState: (newState: React.SetStateAction<StateKey>) =>
+            updateState({
+                currentState: typeof newState === "function" ? newState(state.currentState) : newState,
+            }),
+    };
+    
 };
