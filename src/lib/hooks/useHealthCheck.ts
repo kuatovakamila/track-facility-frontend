@@ -139,23 +139,27 @@ export const useHealthCheck = (): HealthCheckState & {
 		}
 		navigate("/complete-authentication", { state: { success: true } });
 	}, [state, navigate, updateState]);
-
     const listenToAlcoholData = useCallback(() => {
         const alcoholRef = ref(db, "alcohol_value");
         console.log("📡 Listening to Firebase alcohol data...");
     
-        refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+        // Start the timeout countdown
+        refs.timeout = setTimeout(() => {
+            console.warn("⏳ No alcohol data received in time. Triggering timeout.");
+            handleTimeout();
+        }, SOCKET_TIMEOUT);
     
-        const unsubscribe = onValue(alcoholRef, async (snapshot) => {
+        const unsubscribe = onValue(alcoholRef, (snapshot) => {
             const data = snapshot.val();
+            
             if (!data) {
-                console.warn("⚠️ No alcohol data received from Firebase.");
+                console.warn("⚠️ No valid alcohol data received from Firebase.");
                 return;
             }
     
             console.log("📡 Alcohol data received from Firebase:", data);
     
-            // Если уже установлено значение, больше не обновляем
+            // If already measured, ignore further updates
             if (refs.alcoholMeasured) {
                 console.log("✅ Alcohol status already determined, ignoring updates.");
                 return;
@@ -168,30 +172,28 @@ export const useHealthCheck = (): HealthCheckState & {
     
             if (alcoholStatus !== "Не определено") {
                 console.log("✅ Final alcohol status detected:", alcoholStatus);
-                
-                updateState({
-                    alcoholData: { alcoholLevel: alcoholStatus },
-                });
     
-                clearTimeout(refs.timeout!);
+                updateState({ alcoholData: { alcoholLevel: alcoholStatus } });
     
+                clearTimeout(refs.timeout!); // Cancel the timeout
                 refs.alcoholMeasured = true;
     
                 console.log("❌ Unsubscribing from Firebase after final result.");
-                unsubscribe(); // Останавливаем подписку
+                unsubscribe(); // Stop listening to Firebase
     
-                // ✅ Гарантируем вызов handleComplete() и предотвращаем повторный цикл
+                // ✅ Ensure navigation to the next step
                 console.log("🚀 Executing handleComplete()");
-                await handleComplete();
+                handleComplete();
             }
         });
     
         return () => {
             console.log("❌ Stopping alcohol listener.");
-            unsubscribe(); // Останавливаем слушателя при выходе
+            unsubscribe(); // Stop Firebase listener on cleanup
             clearTimeout(refs.timeout!);
         };
     }, [handleComplete, handleTimeout]);
+    
     
     
     
