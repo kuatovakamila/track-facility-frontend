@@ -3,9 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
-import { ref, onValue, off } from "firebase/database";
+import { ref, onValue } from "firebase/database";
 import { db } from "./firebase";
-
 
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
@@ -32,6 +31,7 @@ type HealthCheckState = {
     secondsLeft: number;
 };
 
+const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
 
 export const useHealthCheck = (): HealthCheckState & {
     handleComplete: () => Promise<void>;
@@ -92,7 +92,7 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     const listenToAlcoholData = useCallback(() => {
-        const alcoholRef = ref(db, "alcohol_value"); // Change path if needed
+        const alcoholRef = ref(db, "alcohol_value");
 
         console.log("🔄 Listening for alcohol data from Firebase...");
 
@@ -123,15 +123,13 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcoholData: { alcoholLevel: alcoholStatus },
             }));
 
-            // ✅ Stop listening after getting valid data
-            off(alcoholRef);
+            unsubscribe(); // ✅ Automatically stop listening once valid data is received
             setTimeout(handleComplete, 300);
         });
 
-        // Handle timeout if no data changes
         refs.timeout = setTimeout(() => {
             console.warn("⏳ Timeout: No valid alcohol data received.");
-            off(alcoholRef); // Stop listening
+            unsubscribe();
             handleTimeout();
         }, SOCKET_TIMEOUT);
 
@@ -172,8 +170,20 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.isSubmitting) return;
         refs.isSubmitting = true;
 
-        console.log("🚀 Completing authentication...");
+        console.log("🚀 Checking state sequence...");
 
+        const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
+        if (currentIndex < STATE_SEQUENCE.length - 1) {
+            updateState({
+                currentState: STATE_SEQUENCE[currentIndex + 1],
+                stabilityTime: 0,
+            });
+
+            refs.isSubmitting = false;
+            return;
+        }
+
+        // ✅ Instead of resetting, go to `/complete-authentication`
         try {
             const faceId = localStorage.getItem("faceId");
             if (!faceId) throw new Error("❌ Face ID not found");
@@ -189,22 +199,6 @@ export const useHealthCheck = (): HealthCheckState & {
             }));
 
             navigate("/complete-authentication", { state: { success: true } });
-
-            setTimeout(() => {
-                console.log("⏳ Returning to home and preparing next session...");
-                navigate("/");
-
-                setTimeout(() => {
-                    console.log(`🔄 Starting new session #${refs.sessionCount + 1}`);
-                    updateState({
-                        currentState: "TEMPERATURE",
-                        stabilityTime: 0,
-                        temperatureData: { temperature: 0 },
-                        alcoholData: { alcoholLevel: "Не определено" },
-                        secondsLeft: 15,
-                    });
-                }, 1000);
-            }, 4000);
         } catch (error) {
             console.error("❌ Submission error:", error);
             toast.error("Ошибка отправки данных. Проверьте соединение.");
