@@ -127,7 +127,6 @@ export const useHealthCheck = (): HealthCheckState & {
         moveToNextState();
     }, [moveToNextState, updateState]);
 
-    // ✅ WebSocket for TEMPERATURE
     useEffect(() => {
         if (!refs.socket) {
             refs.socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost:3001", {
@@ -136,23 +135,17 @@ export const useHealthCheck = (): HealthCheckState & {
                 reconnectionAttempts: 20,
                 reconnectionDelay: 10000,
             });
-
+    
             refs.socket.on("connect", () => console.log("✅ WebSocket connected."));
-            refs.socket.on("disconnect", (reason) => {
-                console.warn("⚠️ WebSocket disconnected:", reason);
-                refs.socket = null;
-            });
-        }
-
-        if (state.currentState === "TEMPERATURE") {
-            refs.socket.off("temperature");
             refs.socket.on("temperature", handleTemperatureData);
         }
-
+    
         return () => {
             console.log("🛑 Cleaning up WebSocket listeners...");
+            refs.socket?.off("temperature", handleTemperatureData);
         };
-    }, [state.currentState, handleTemperatureData]);
+    }, [handleTemperatureData]);
+    
 
 // ✅ Firebase for ALCOHOL (removes listener after first data)
 useEffect(() => {
