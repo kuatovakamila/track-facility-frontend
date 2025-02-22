@@ -140,10 +140,14 @@ export const useHealthCheck = (): HealthCheckState & {
             return;
         }
     
-        // ✅ If this is the last step (ALCOHOL), navigate to completion
+        // ✅ Prevent state updates before navigation
         console.log("🎉 Health check complete! Navigating to /complete-authentication");
-        navigate("/complete-authentication", { state: { success: true } });
+    
+        setTimeout(() => {
+            navigate("/complete-authentication", { state: { success: true } });
+        }, 100); // Small delay to prevent race conditions
     }, [state.currentState, navigate, updateState]);
+    
     
     const listenToAlcoholData = useCallback(() => {
         const alcoholRef = ref(db, "alcohol_value");
