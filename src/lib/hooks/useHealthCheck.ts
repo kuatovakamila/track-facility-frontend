@@ -110,12 +110,19 @@ export const useHealthCheck = (): HealthCheckState & {
 
                 console.log("📡 Alcohol data received from Firebase:", data);
 
+                // ✅ Convert potential string values to numbers
+                const sober = Number(data.sober);
+                const drunk = Number(data.drunk);
+
+                console.log(`🔍 Sober: ${sober}, Drunk: ${drunk}`);
+
                 let alcoholStatus = "Не определено";
-                if (data.sober === 0) {
+                if (sober === 0) {
                     alcoholStatus = "Трезвый";
-                } else if (data.drunk === 0) {
+                } else if (drunk === 0) {
                     alcoholStatus = "Пьяный";
                 } else {
+                    console.warn("⚠️ No valid alcohol status yet. Retrying...");
                     setTimeout(fetchAlcoholData, POLLING_INTERVAL);
                     return;
                 }
@@ -182,7 +189,7 @@ export const useHealthCheck = (): HealthCheckState & {
         const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
 
         if (currentIndex < STATE_SEQUENCE.length - 1) {
-            // ✅ Move from "TEMPERATURE" → "ALCOHOL"
+            // ✅ Move to next state (TEMPERATURE → ALCOHOL)
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
                 stabilityTime: 0,
