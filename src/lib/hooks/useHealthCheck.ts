@@ -26,6 +26,7 @@ type HealthCheckState = {
 };
 
 const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
+const [processCompleted, setProcessCompleted] = useState(false);
 
 const configureSocketListeners = (
 	socket: Socket,
@@ -138,23 +139,26 @@ export const useHealthCheck = (): HealthCheckState & {
             return;
         }
     
-        // ✅ Ensure WebSocket is completely stopped
+        console.log("🎉 Health check complete! Navigating to /complete-authentication");
+    
+        // ✅ Mark process as completed to prevent reinitialization
+        setProcessCompleted(true);
+    
+        // ✅ Disconnect WebSocket before navigating
         if (refs.socket) {
             console.log("🔌 Disconnecting WebSocket and stopping auto-reconnect...");
             refs.socket.disconnect();
             refs.socket = null;
         }
     
-        // ✅ Clear any active timeouts and listeners to prevent re-triggering
+        // ✅ Ensure all timeouts and listeners are cleared
         clearTimeout(refs.timeout!);
         refs.timeout = null;
         refs.hasTimedOut = true;
     
-        console.log("🎉 Health check complete! Navigating to /complete-authentication");
-    
         setTimeout(() => {
             navigate("/complete-authentication", { state: { success: true } });
-        }, 100); // Small delay to ensure cleanup before navigation
+        }, 100);
     }, [state.currentState, navigate, updateState]);
     
     
@@ -218,8 +222,8 @@ export const useHealthCheck = (): HealthCheckState & {
     
 
 	useEffect(() => {
-        if (refs.hasTimedOut) {
-            console.log("⏳ Skipping WebSocket setup since process has completed.");
+        if (processCompleted) {
+            console.log("✅ Process already completed. Skipping WebSocket setup.");
             return;
         }
     
@@ -227,7 +231,7 @@ export const useHealthCheck = (): HealthCheckState & {
     
         const socket = io("http://localhost:3001", {
             transports: ["websocket"],
-            reconnection: false, // ❌ Prevents WebSocket from reconnecting automatically
+            reconnection: false, // Prevent auto-reconnect
         });
     
         refs.socket = socket;
@@ -256,6 +260,7 @@ export const useHealthCheck = (): HealthCheckState & {
             if (cleanupAlcohol) cleanupAlcohol();
         };
     }, [
+        processCompleted, // 🚀 Add this dependency to stop reinitialization
         state.currentState,
         state.stabilityTime,
         handleTimeout,
@@ -265,7 +270,6 @@ export const useHealthCheck = (): HealthCheckState & {
         updateState,
     ]);
     
-
 	useEffect(() => {
 		setSecondsLeft(15);
 		const interval = setInterval(() => {
