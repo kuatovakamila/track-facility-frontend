@@ -104,6 +104,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
                 if (!data) {
                     console.warn("⚠️ No alcohol data received.");
+                    setTimeout(fetchAlcoholData, POLLING_INTERVAL);
                     return;
                 }
 
@@ -115,7 +116,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 } else if (data.drunk === 0) {
                     alcoholStatus = "Пьяный";
                 } else {
-                    setTimeout(fetchAlcoholData, POLLING_INTERVAL); // Retry in 1 second
+                    setTimeout(fetchAlcoholData, POLLING_INTERVAL);
                     return;
                 }
 
@@ -130,11 +131,11 @@ export const useHealthCheck = (): HealthCheckState & {
                 setTimeout(handleComplete, 300);
             } catch (error) {
                 console.error("❌ Firebase read error:", error);
-                setTimeout(fetchAlcoholData, POLLING_INTERVAL); // Retry in 1 second
+                setTimeout(fetchAlcoholData, POLLING_INTERVAL);
             }
         };
 
-        fetchAlcoholData(); // Start polling
+        fetchAlcoholData();
 
         refs.timeout = setTimeout(() => {
             console.warn("⏳ Timeout: No valid alcohol data received.");
@@ -181,6 +182,7 @@ export const useHealthCheck = (): HealthCheckState & {
         const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
 
         if (currentIndex < STATE_SEQUENCE.length - 1) {
+            // ✅ Move from "TEMPERATURE" → "ALCOHOL"
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
                 stabilityTime: 0,
@@ -190,7 +192,9 @@ export const useHealthCheck = (): HealthCheckState & {
             return;
         }
 
-        // ✅ Завершаем процесс после ALCOHOL
+        // ✅ After "ALCOHOL", finish authentication
+        console.log("✅ Completing authentication after ALCOHOL");
+
         try {
             const faceId = localStorage.getItem("faceId");
             if (!faceId) throw new Error("❌ Face ID not found");
