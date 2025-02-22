@@ -130,7 +130,6 @@ export const useHealthCheck = (): HealthCheckState & {
     
         const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
     
-        // ✅ If there's another state, move to the next step
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
@@ -140,13 +139,20 @@ export const useHealthCheck = (): HealthCheckState & {
             return;
         }
     
-        // ✅ Prevent state updates before navigation
+        // ✅ Disconnect WebSocket to prevent unwanted state resets
+        if (refs.socket) {
+            console.log("🔌 Disconnecting WebSocket before navigating...");
+            refs.socket.disconnect();
+            refs.socket = null;
+        }
+    
         console.log("🎉 Health check complete! Navigating to /complete-authentication");
     
         setTimeout(() => {
             navigate("/complete-authentication", { state: { success: true } });
-        }, 100); // Small delay to prevent race conditions
+        }, 100); // Small delay to ensure state updates before navigation
     }, [state.currentState, navigate, updateState]);
+    
     
     
     const listenToAlcoholData = useCallback(() => {
