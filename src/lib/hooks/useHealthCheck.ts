@@ -29,7 +29,6 @@ type HealthCheckState = {
 };
 
 const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
-
 export const useHealthCheck = (): HealthCheckState & {
     handleComplete: () => Promise<void>;
     setCurrentState: React.Dispatch<React.SetStateAction<StateKey>>;
@@ -75,36 +74,43 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || processCompleted) return;
         refs.isSubmitting = true;
-
+        setProcessCompleted(true);
+    
+        console.log("🟢 handleComplete() Executed! Current State:", state.currentState);
+    
         const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
-
         if (currentIndex < STATE_SEQUENCE.length - 1) {
+            console.log("➡️ Moving to Next Step:", STATE_SEQUENCE[currentIndex + 1]);
+    
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
                 stabilityTime: 0,
             });
-
+    
             setSecondsLeft(COUNTDOWN_TIME);
             setProgress(0);
             refs.isSubmitting = false;
             return;
         }
-
-        console.log("🎉 Health check complete! Navigating to /complete-authentication");
-        setProcessCompleted(true);
-
+    
+        console.log("✅ Process Completed! Navigating to /complete-authentication");
+    
         if (refs.socket) {
             console.log("🔌 Disconnecting WebSocket...");
             refs.socket.disconnect();
             refs.socket = null;
         }
-
+    
         clearTimeout(refs.timeout!);
         refs.timeout = null;
         refs.hasTimedOut = true;
-
-        setTimeout(() => navigate("/complete-authentication", { state: { success: true } }), 100);
+    
+        setTimeout(() => {
+            console.log("🚀 Final Navigation: /complete-authentication");
+            navigate("/complete-authentication", { state: { success: true } });
+        }, 100);
     }, [state.currentState, navigate, updateState, processCompleted]);
+    
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
@@ -138,94 +144,103 @@ export const useHealthCheck = (): HealthCheckState & {
 
     const listenToAlcoholData = useCallback(() => {
         if (processCompleted) return;
-
+        console.log("📡 Firebase Listener Activated for Alcohol Data");
+    
         const alcoholRef = ref(db, "alcohol_value");
-        console.log("📡 Listening to Firebase alcohol data...");
-
+    
         refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-
+    
         const unsubscribe = onValue(alcoholRef, async (snapshot) => {
             if (processCompleted) return;
-
+    
             const data = snapshot.val();
             if (!data) {
-                console.warn("⚠️ No alcohol data received from Firebase.");
+                console.warn("⚠️ No alcohol data received.");
                 return;
             }
-
-            console.log("📡 Alcohol data received from Firebase:", data);
+    
+            console.log("📡 Alcohol Data Received:", data);
             if (refs.alcoholMeasured) return;
-
+    
             let alcoholStatus = "Не определено";
             if (data.sober === 0) alcoholStatus = "Трезвый";
             else if (data.drunk === 0) alcoholStatus = "Пьяный";
-
-            if (alcoholStatus !== "Не определено") {
-                console.log("✅ Final alcohol status detected:", alcoholStatus);
-
-                setState((prev) => ({
-                    ...prev,
-                    alcoholData: { alcoholLevel: alcoholStatus },
-                }));
-
-                clearTimeout(refs.timeout!);
-                refs.alcoholMeasured = true;
-                unsubscribe();
-
-                console.log("🚀 Executing handleComplete()");
-                handleComplete();
-            }
+    
+            console.log("✅ Alcohol Status Determined:", alcoholStatus);
+    
+            setState((prev) => ({
+                ...prev,
+                alcoholData: { alcoholLevel: alcoholStatus },
+            }));
+    
+            clearTimeout(refs.timeout!);
+            refs.alcoholMeasured = true;
+            unsubscribe();
+    
+            console.log("🚀 Executing handleComplete() after Alcohol Measurement");
+            handleComplete();
         });
-
+    
         return () => {
-            console.log("❌ Stopping alcohol listener.");
+            console.log("❌ Unsubscribing from Firebase Listener for Alcohol Data");
             unsubscribe();
             clearTimeout(refs.timeout!);
         };
     }, [handleComplete, handleTimeout, processCompleted]);
+    
+useEffect(() => {
+    if (processCompleted) {
+        console.log("🛑 Process Already Completed. Stopping Further Execution.");
+        return;
+    }
 
-    useEffect(() => {
-        if (processCompleted) return;
+    console.log("🔄 useEffect Triggered. Current State:", state.currentState);
 
-        refs.hasTimedOut = false;
+    refs.hasTimedOut = false;
+    const socket = io("http://localhost:3001", { transports: ["websocket"], reconnection: false });
 
-        const socket = io("http://localhost:3001", { transports: ["websocket"], reconnection: false });
+    refs.socket = socket;
+    refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+    socket.on("temperature", handleDataEvent);
 
-        refs.socket = socket;
-        refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+    let cleanupAlcohol: (() => void) | undefined;
+    if (state.currentState === "ALCOHOL") cleanupAlcohol = listenToAlcoholData();
 
-        socket.on("temperature", handleDataEvent);
+    return () => {
+        console.log("🔌 Cleaning Up WebSocket and Firebase Listener...");
+        socket.disconnect();
+        clearTimeout(refs.timeout!);
+        if (cleanupAlcohol) cleanupAlcohol();
+    };
+}, [processCompleted, state.currentState, handleTimeout, listenToAlcoholData]);
 
-        const stabilityInterval = setInterval(() => {
-            if (Date.now() - refs.lastDataTime > STABILITY_UPDATE_INTERVAL) {
-                setState((prev) => {
-                    const decreasedStabilityTime = Math.max(prev.stabilityTime - 1, 0);
-                    setProgress((decreasedStabilityTime / MAX_STABILITY_TIME) * 100);
+    
 
-                    return { ...prev, stabilityTime: decreasedStabilityTime };
-                });
-            }
-        }, STABILITY_UPDATE_INTERVAL);
+useEffect(() => {
+    if (processCompleted) return; // ✅ Stop updates if process is completed
 
-        let cleanupAlcohol: (() => void) | undefined;
-        if (state.currentState === "ALCOHOL") cleanupAlcohol = listenToAlcoholData();
+    console.log("🔄 Stability Update Interval Started");
+    
+    const stabilityInterval = setInterval(() => {
+        const timeSinceLastData = Date.now() - refs.lastDataTime;
+        
+        if (timeSinceLastData > STABILITY_UPDATE_INTERVAL) {
+            setState((prev) => {
+                const decreasedStabilityTime = Math.max(prev.stabilityTime - 1, 0);
+                setProgress((decreasedStabilityTime / MAX_STABILITY_TIME) * 100);
 
-        return () => {
-            socket.disconnect();
-            clearTimeout(refs.timeout!);
-            clearInterval(stabilityInterval);
-            if (cleanupAlcohol) cleanupAlcohol();
-        };
-    }, [processCompleted, state.currentState, handleTimeout, listenToAlcoholData]);
+                console.log("⏳ Decreasing Stability Time:", decreasedStabilityTime);
+                
+                return { ...prev, stabilityTime: decreasedStabilityTime };
+            });
+        }
+    }, STABILITY_UPDATE_INTERVAL);
 
-    useEffect(() => {
-        setSecondsLeft(COUNTDOWN_TIME);
-        const interval = setInterval(() => {
-            setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [state.currentState]);
+    return () => {
+        console.log("🛑 Stopping Stability Update Interval");
+        clearInterval(stabilityInterval);
+    };
+}, [processCompleted, state.currentState]); // ✅ Only update when state changes
 
     return {
         ...state,
