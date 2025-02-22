@@ -125,25 +125,30 @@ export const useHealthCheck = (): HealthCheckState & {
 		[handleDataEvent, handleTimeout]
 	);
     const handleComplete = useCallback(async () => {
-		if (refs.isSubmitting) return;
-		refs.isSubmitting = true;
-
-		const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
-		if (currentIndex < STATE_SEQUENCE.length - 1) {
-			updateState({
-				currentState: STATE_SEQUENCE[currentIndex + 1],
-				stabilityTime: 0,
-			});
-			refs.isSubmitting = false;
-			return;
-		}
-		navigate("/complete-authentication", { state: { success: true } });
-	}, [state, navigate, updateState]);
+        if (refs.isSubmitting) return;
+        refs.isSubmitting = true;
+    
+        const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
+    
+        // ✅ If there's another state, move to the next step
+        if (currentIndex < STATE_SEQUENCE.length - 1) {
+            updateState({
+                currentState: STATE_SEQUENCE[currentIndex + 1],
+                stabilityTime: 0,
+            });
+            refs.isSubmitting = false;
+            return;
+        }
+    
+        // ✅ If this is the last step (ALCOHOL), navigate to completion
+        console.log("🎉 Health check complete! Navigating to /complete-authentication");
+        navigate("/complete-authentication", { state: { success: true } });
+    }, [state.currentState, navigate, updateState]);
+    
     const listenToAlcoholData = useCallback(() => {
         const alcoholRef = ref(db, "alcohol_value");
         console.log("📡 Listening to Firebase alcohol data...");
     
-        // Start the timeout countdown
         refs.timeout = setTimeout(() => {
             console.warn("⏳ No alcohol data received in time. Triggering timeout.");
             handleTimeout();
@@ -159,7 +164,6 @@ export const useHealthCheck = (): HealthCheckState & {
     
             console.log("📡 Alcohol data received from Firebase:", data);
     
-            // If already measured, ignore further updates
             if (refs.alcoholMeasured) {
                 console.log("✅ Alcohol status already determined, ignoring updates.");
                 return;
@@ -181,7 +185,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 console.log("❌ Unsubscribing from Firebase after final result.");
                 unsubscribe(); // Stop listening to Firebase
     
-                // ✅ Ensure navigation to the next step
+                // ✅ Ensure navigation happens only at the last step
                 console.log("🚀 Executing handleComplete()");
                 handleComplete();
             }
@@ -189,10 +193,11 @@ export const useHealthCheck = (): HealthCheckState & {
     
         return () => {
             console.log("❌ Stopping alcohol listener.");
-            unsubscribe(); // Stop Firebase listener on cleanup
+            unsubscribe();
             clearTimeout(refs.timeout!);
         };
     }, [handleComplete, handleTimeout]);
+    
     
     
     
