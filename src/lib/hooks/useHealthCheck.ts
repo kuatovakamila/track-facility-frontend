@@ -181,7 +181,9 @@ export const useHealthCheck = (): HealthCheckState & {
         }
 
         return () => {
-            console.log("🛑 Cleanup function, but Firebase will still be polled.");
+            console.log("🛑 Cleanup function, disconnecting WebSocket.");
+            refs.socket?.disconnect();
+            refs.socket = null;
         };
     }, [state.currentState, handleTemperatureData, pollAlcoholData]);
 
@@ -204,10 +206,13 @@ export const useHealthCheck = (): HealthCheckState & {
             return;
         }
 
-        // ✅ If we are in ALCOHOL, complete authentication
+        // ✅ If we are in ALCOHOL, complete authentication and disconnect WebSocket
         console.log("✅ Completing authentication after ALCOHOL");
 
         try {
+            refs.socket?.disconnect(); // ✅ Ensure WebSocket is disconnected
+            refs.socket = null;
+
             const faceId = localStorage.getItem("faceId");
             if (!faceId) throw new Error("❌ Face ID not found");
 
