@@ -4,10 +4,12 @@ import { io, type Socket } from "socket.io-client";
 import { ref, onValue, off } from "firebase/database"; // Firebase imports
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
-import { db } from "./firebase"; // Import your Firebase config
+import { db } from "./firebase"; // Import Firebase config
 
 // Initialize Firebase
 
+
+// Constants
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 
@@ -24,7 +26,6 @@ type HealthCheckState = {
     secondsLeft: number;
 };
 
-const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
 
 const configureSocketListeners = (
     socket: Socket,
@@ -65,6 +66,7 @@ export const useHealthCheck = (): HealthCheckState & {
         isSubmitting: false,
         hasNavigated: false,
         sessionCount: 0,
+        alcoholReceived: false, // ✅ Ensure alcohol data is received before completing session
     }).current;
 
     const updateState = useCallback(
@@ -101,13 +103,18 @@ export const useHealthCheck = (): HealthCheckState & {
                     ? { temperature: Number(data.temperature) || 0 }
                     : prev.temperatureData,
             }));
+
+            // ✅ Move to ALCOHOL state only after stability is reached
+            if (state.currentState === "TEMPERATURE" && state.stabilityTime >= MAX_STABILITY_TIME) {
+                updateState({ currentState: "ALCOHOL", stabilityTime: 0 });
+            }
         },
         [handleTimeout]
     );
 
     useEffect(() => {
         if (!refs.socket) {
-            refs.socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost:3001", {
+            refs.socket = io(import.meta.env.VITE_SERVER_URL, {
                 transports: ["websocket"],
                 reconnection: true,
                 reconnectionAttempts: 20,
@@ -135,56 +142,47 @@ export const useHealthCheck = (): HealthCheckState & {
             console.log("🛑 Not cleaning up event listeners until authentication is fully done...");
         };
     }, [state.currentState, handleTimeout, handleDataEvent]);
-
-    // Retrieve alcohol level from Firebase
     useEffect(() => {
         if (state.currentState === "ALCOHOL") {
-            const alcoholRef = ref(db, "alcohol_value");
-
+            const alcoholRef = ref(db, "alcohol_value"); // Adjust if path differs
+    
             const listener = onValue(alcoholRef, (snapshot) => {
                 const data = snapshot.val();
                 if (data) {
                     console.log("📡 Alcohol data received from Firebase:", data);
-
+    
                     let alcoholStatus = "Не определено";
-                    if (data === "normal") {
+    
+                    if (data.sober === 1 && data.drunk === 0) {
                         alcoholStatus = "Трезвый";
-                    } else if (data === "drunk") {
+                    } else if (data.sober === 0 && data.drunk === 1) {
                         alcoholStatus = "Пьяный";
                     }
-
-                    setState((prev) => ({
-                        ...prev,
-                        stabilityTime: MAX_STABILITY_TIME,
+    
+                    updateState({
                         alcoholData: { alcoholLevel: alcoholStatus },
-                    }));
-
-                    setTimeout(handleComplete, 300);
+                        stabilityTime: MAX_STABILITY_TIME,
+                    });
+    
+                    refs.alcoholReceived = true;
+    
+                    // ✅ Only complete if alcohol data is fully received
+                    if (refs.alcoholReceived) {
+                        setTimeout(handleComplete, 300);
+                    }
                 }
             });
-
+    
             return () => {
                 off(alcoholRef, "value", listener);
             };
         }
     }, [state.currentState]);
+    
 
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
         refs.isSubmitting = true;
-
-        console.log("🚀 Checking state sequence...");
-
-        const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
-        if (currentIndex < STATE_SEQUENCE.length - 1) {
-            updateState({
-                currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0,
-            });
-
-            refs.isSubmitting = false;
-            return;
-        }
 
         try {
             const faceId = localStorage.getItem("faceId");
@@ -215,6 +213,7 @@ export const useHealthCheck = (): HealthCheckState & {
                         alcoholData: { alcoholLevel: "Не определено" },
                         secondsLeft: 15,
                     });
+                    refs.alcoholReceived = false;
                 }, 1000);
             }, 4000);
         } catch (error) {
