@@ -56,7 +56,7 @@ export const useHealthCheck = (): HealthCheckState & {
         hasNavigated: false,
         sessionCount: 0,
         stopPolling: false, // ✅ Flag to stop Firebase polling
-        completed: false, // ✅ Prevent multiple handleComplete() calls
+        completed: false, // ✅ Prevent multiple `handleComplete()` calls
     }).current;
 
     const updateState = useCallback(
@@ -101,6 +101,8 @@ export const useHealthCheck = (): HealthCheckState & {
         console.log("🔄 Polling for alcohol data from Firebase...");
 
         const fetchAlcoholData = async () => {
+            if (refs.stopPolling) return; // ✅ Double check before fetching
+
             try {
                 const snapshot = await get(alcoholRef);
                 const data: FirebaseAlcoholData | null = snapshot.val();
@@ -113,7 +115,6 @@ export const useHealthCheck = (): HealthCheckState & {
 
                 console.log("📡 Alcohol data received from Firebase:", data);
 
-                // ✅ Convert values to numbers for safety
                 const sober = Number(data.sober);
                 const drunk = Number(data.drunk);
 
@@ -148,7 +149,7 @@ export const useHealthCheck = (): HealthCheckState & {
         };
 
         fetchAlcoholData();
-    }, [handleTimeout]);
+    }, []);
 
     useEffect(() => {
         if (!refs.socket) {
@@ -176,14 +177,15 @@ export const useHealthCheck = (): HealthCheckState & {
         }
 
         return () => {
-            console.log("🛑 Cleanup function: Disconnecting WebSocket.");
+            console.log("🛑 Cleanup function: Disconnecting WebSocket and stopping polling.");
             refs.socket?.disconnect();
             refs.socket = null;
+            refs.stopPolling = true; // ✅ Stop polling when unmounting
         };
     }, [state.currentState, handleTemperatureData, pollAlcoholData]);
 
     const handleComplete = useCallback(async () => {
-        if (refs.completed) return; // ✅ Ensure we only run this once
+        if (refs.completed) return; // ✅ Prevent multiple calls
         refs.completed = true;
 
         console.log("🚀 Checking state sequence...");
@@ -191,7 +193,6 @@ export const useHealthCheck = (): HealthCheckState & {
         const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
 
         if (currentIndex < STATE_SEQUENCE.length - 1) {
-            // ✅ Move to next state (TEMPERATURE → ALCOHOL)
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
                 stabilityTime: 0,
@@ -201,7 +202,6 @@ export const useHealthCheck = (): HealthCheckState & {
             return;
         }
 
-        // ✅ If we are in ALCOHOL, complete authentication and disconnect WebSocket
         console.log("✅ Completing authentication after ALCOHOL");
 
         try {
@@ -220,6 +220,8 @@ export const useHealthCheck = (): HealthCheckState & {
                 temperature: state.temperatureData.temperature,
                 alcohol: state.alcoholData.alcoholLevel,
             }));
+
+            refs.stopPolling = true; // ✅ Stop polling to prevent re-triggering
 
             navigate("/complete-authentication", { state: { success: true } });
         } catch (error) {
