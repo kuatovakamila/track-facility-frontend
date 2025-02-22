@@ -1,12 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
-
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
 import React from "react";
 
-const MAX_STABILITY_TIME = 7; // ✅ Stability time for full progress
+const MAX_STABILITY_TIME = 7; // ✅ Stability time needed for full progress
 const SOCKET_TIMEOUT = 15000;
 const STABILITY_UPDATE_INTERVAL = 1000;
 const COUNTDOWN_TIME = 15;
@@ -110,23 +109,27 @@ export const useHealthCheck = (): HealthCheckState & {
 
 			if (state.currentState === "TEMPERATURE" && data.temperature) {
 				const newTemperature = Number(data.temperature);
-				const stabilityReached = state.stabilityTime + 1 >= MAX_STABILITY_TIME;
 
-				updateState({
-					stabilityTime: Math.min(state.stabilityTime + 1, MAX_STABILITY_TIME),
-					temperatureData: { temperature: newTemperature },
+				// ✅ Use functional updates to ensure the correct latest stabilityTime
+				setState((prev) => {
+					const newStabilityTime = Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME);
+					setProgress((newStabilityTime / MAX_STABILITY_TIME) * 100); // ✅ Update progress correctly
+
+					// ✅ If stabilized, move to next step
+					if (newStabilityTime >= MAX_STABILITY_TIME) {
+						console.log("✅ Temperature stabilized! Moving to alcohol measurement...");
+						handleComplete();
+					}
+
+					return {
+						...prev,
+						stabilityTime: newStabilityTime,
+						temperatureData: { temperature: newTemperature },
+					};
 				});
-
-				// ✅ Update progress based on stability time
-				setProgress(((state.stabilityTime + 1) / MAX_STABILITY_TIME) * 100);
-
-				if (stabilityReached) {
-					console.log("✅ Temperature stabilized! Moving to alcohol measurement...");
-					handleComplete();
-				}
 			}
 		},
-		[state.currentState, state.stabilityTime, updateState, handleTimeout, handleComplete]
+		[state.currentState, handleTimeout, handleComplete]
 	);
 
 	useEffect(() => {
@@ -144,8 +147,12 @@ export const useHealthCheck = (): HealthCheckState & {
 		// ✅ Decrease stability time if no data arrives, reducing progress
 		const stabilityInterval = setInterval(() => {
 			if (Date.now() - refs.lastDataTime > STABILITY_UPDATE_INTERVAL) {
-				updateState({ stabilityTime: Math.max(state.stabilityTime - 1, 0) });
-				setProgress((prev) => Math.max(prev - (100 / MAX_STABILITY_TIME), 0)); // Decrease progress
+				setState((prev) => {
+					const decreasedStabilityTime = Math.max(prev.stabilityTime - 1, 0);
+					setProgress((decreasedStabilityTime / MAX_STABILITY_TIME) * 100); // ✅ Decrease progress
+
+					return { ...prev, stabilityTime: decreasedStabilityTime };
+				});
 			}
 		}, STABILITY_UPDATE_INTERVAL);
 
@@ -154,7 +161,7 @@ export const useHealthCheck = (): HealthCheckState & {
 			clearTimeout(refs.timeout!);
 			clearInterval(stabilityInterval);
 		};
-	}, [processCompleted, state.currentState, handleTimeout, updateState]);
+	}, [processCompleted, state.currentState, handleTimeout]);
 
 	// ✅ **Fix: Countdown Timer**
 	useEffect(() => {
