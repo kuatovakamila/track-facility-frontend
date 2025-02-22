@@ -3,23 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
-import { getDatabase, ref, onValue, off } from "firebase/database";
-import { initializeApp } from "firebase/app";
+import { ref, onValue, off } from "firebase/database";
+import { db } from "./firebase";
 
-// Firebase Configuration (Replace with your own)
-const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_AUTH_DOMAIN",
-    databaseURL: "YOUR_DATABASE_URL",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID",
-};
-
-// Initialize Firebase
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getDatabase(firebaseApp);
 
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
