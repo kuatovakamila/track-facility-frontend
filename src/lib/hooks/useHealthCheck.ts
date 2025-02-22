@@ -95,31 +95,31 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     const pollAlcoholData = useCallback(() => {
-        if (refs.stopPolling) return; // ✅ Stop polling if already completed
-
+        if (refs.stopPolling) return; // ✅ Prevent unnecessary polling
+    
         const alcoholRef = ref(db, "alcohol_value");
         console.log("🔄 Polling for alcohol data from Firebase...");
-
+    
         const fetchAlcoholData = async () => {
             if (refs.stopPolling) return; // ✅ Double check before fetching
-
+    
             try {
                 const snapshot = await get(alcoholRef);
                 const data: FirebaseAlcoholData | null = snapshot.val();
-
-                if (!data) {
-                    console.warn("⚠️ No alcohol data received.");
+    
+                console.log("🔥 Raw Firebase data:", data); // ✅ Debugging log
+    
+                if (!data || typeof data !== "object") {
+                    console.warn("⚠️ No alcohol data received. Retrying...");
                     setTimeout(fetchAlcoholData, POLLING_INTERVAL);
                     return;
                 }
-
-                console.log("📡 Alcohol data received from Firebase:", data);
-
-                const sober = Number(data.sober);
-                const drunk = Number(data.drunk);
-
-                console.log(`🔍 Sober: ${sober}, Drunk: ${drunk}`);
-
+    
+                const sober = Number(data.sober ?? -1);
+                const drunk = Number(data.drunk ?? -1);
+    
+                console.log(`🔍 Processed values → Sober: ${sober}, Drunk: ${drunk}`);
+    
                 let alcoholStatus = "Не определено";
                 if (sober === 0) {
                     alcoholStatus = "Трезвый";
@@ -130,27 +130,27 @@ export const useHealthCheck = (): HealthCheckState & {
                     setTimeout(fetchAlcoholData, POLLING_INTERVAL);
                     return;
                 }
-
-                console.log(`✅ Valid alcohol data received: ${alcoholStatus}`);
-
+    
+                console.log(`✅ Finalized alcohol status: ${alcoholStatus}`);
+    
                 refs.stopPolling = true; // ✅ Stop further polling after valid data
-
+    
                 setState((prev) => ({
                     ...prev,
                     stabilityTime: MAX_STABILITY_TIME,
                     alcoholData: { alcoholLevel: alcoholStatus },
                 }));
-
+    
                 setTimeout(handleComplete, 300);
             } catch (error) {
                 console.error("❌ Firebase read error:", error);
                 setTimeout(fetchAlcoholData, POLLING_INTERVAL);
             }
         };
-
+    
         fetchAlcoholData();
     }, []);
-
+    
     useEffect(() => {
         if (!refs.socket) {
             refs.socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost:3001", {
