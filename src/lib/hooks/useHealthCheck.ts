@@ -7,8 +7,8 @@ import { ref, get } from "firebase/database";
 import { db } from "./firebase";
 
 const MAX_STABILITY_TIME = 7;
-const SOCKET_TIMEOUT = 15000;
-const POLLING_INTERVAL = 1000; // Poll Firebase every second
+const SOCKET_TIMEOUT = 15000;  // ✅ Timeout for WebSocket connection
+const POLLING_INTERVAL = 2000; // ✅ Poll Firebase every 2 seconds
 
 type SensorData = {
     temperature?: string;
@@ -50,13 +50,9 @@ export const useHealthCheck = (): HealthCheckState & {
     const refs = useRef({
         socket: null as Socket | null,
         timeout: null as NodeJS.Timeout | null,
-        lastDataTime: Date.now(),
+        stopPolling: false,
+        completed: false,
         hasTimedOut: false,
-        isSubmitting: false,
-        hasNavigated: false,
-        sessionCount: 0,
-        stopPolling: false, // ✅ Flag to stop Firebase polling
-        completed: false, // ✅ Prevent multiple `handleComplete()` calls
     }).current;
 
     const updateState = useCallback(
@@ -79,9 +75,6 @@ export const useHealthCheck = (): HealthCheckState & {
             if (!data || !data.temperature) return;
 
             console.log("📡 Temperature data received:", data);
-            refs.lastDataTime = Date.now();
-            clearTimeout(refs.timeout!);
-            refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
 
             setState((prev) => ({
                 ...prev,
@@ -91,35 +84,35 @@ export const useHealthCheck = (): HealthCheckState & {
                 temperatureData: { temperature: Number(data.temperature) || 0 },
             }));
         },
-        [handleTimeout]
+        []
     );
 
     const pollAlcoholData = useCallback(() => {
-        if (refs.stopPolling) return; // ✅ Prevent unnecessary polling
-    
+        if (refs.stopPolling) return;
+
         const alcoholRef = ref(db, "alcohol_value");
         console.log("🔄 Polling for alcohol data from Firebase...");
-    
+
         const fetchAlcoholData = async () => {
-            if (refs.stopPolling) return; // ✅ Double check before fetching
-    
+            if (refs.stopPolling) return;
+
             try {
                 const snapshot = await get(alcoholRef);
                 const data: FirebaseAlcoholData | null = snapshot.val();
-    
-                console.log("🔥 Raw Firebase data:", data); // ✅ Debugging log
-    
-                if (!data || typeof data !== "object") {
+
+                console.log("🔥 Raw Firebase Data:", data);
+
+                if (!data) {
                     console.warn("⚠️ No alcohol data received. Retrying...");
                     setTimeout(fetchAlcoholData, POLLING_INTERVAL);
                     return;
                 }
-    
+
                 const sober = Number(data.sober ?? -1);
                 const drunk = Number(data.drunk ?? -1);
-    
+
                 console.log(`🔍 Processed values → Sober: ${sober}, Drunk: ${drunk}`);
-    
+
                 let alcoholStatus = "Не определено";
                 if (sober === 0) {
                     alcoholStatus = "Трезвый";
@@ -130,38 +123,39 @@ export const useHealthCheck = (): HealthCheckState & {
                     setTimeout(fetchAlcoholData, POLLING_INTERVAL);
                     return;
                 }
-    
-                console.log(`✅ Finalized alcohol status: ${alcoholStatus}`);
-    
-                refs.stopPolling = true; // ✅ Stop further polling after valid data
-    
+
+                console.log(`✅ Alcohol Status Set: ${alcoholStatus}`);
+
+                refs.stopPolling = true; // ✅ Stop further polling
+
                 setState((prev) => ({
                     ...prev,
                     stabilityTime: MAX_STABILITY_TIME,
                     alcoholData: { alcoholLevel: alcoholStatus },
                 }));
-    
+
                 setTimeout(handleComplete, 300);
             } catch (error) {
-                console.error("❌ Firebase read error:", error);
+                console.error("❌ Firebase Read Error:", error);
                 setTimeout(fetchAlcoholData, POLLING_INTERVAL);
             }
         };
-    
+
         fetchAlcoholData();
     }, []);
-    
+
     useEffect(() => {
         if (!refs.socket) {
             refs.socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost:3001", {
                 transports: ["websocket"],
                 reconnection: true,
-                reconnectionAttempts: 20,
-                reconnectionDelay: 10000,
+                reconnectionAttempts: 5,
+                reconnectionDelay: 3000,
             });
 
             refs.socket.on("connect", () => {
                 console.log("✅ WebSocket connected.");
+                refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT); // ✅ Start timeout
             });
 
             refs.socket.on("disconnect", (reason) => {
@@ -177,15 +171,16 @@ export const useHealthCheck = (): HealthCheckState & {
         }
 
         return () => {
-            console.log("🛑 Cleanup function: Disconnecting WebSocket and stopping polling.");
+            console.log("🛑 Cleanup: Disconnect WebSocket & Stop Polling");
             refs.socket?.disconnect();
             refs.socket = null;
-            refs.stopPolling = true; // ✅ Stop polling when unmounting
+            refs.stopPolling = true;
+            clearTimeout(refs.timeout!); // ✅ Clear timeout
         };
     }, [state.currentState, handleTemperatureData, pollAlcoholData]);
 
     const handleComplete = useCallback(async () => {
-        if (refs.completed) return; // ✅ Prevent multiple calls
+        if (refs.completed) return;
         refs.completed = true;
 
         console.log("🚀 Checking state sequence...");
@@ -205,7 +200,7 @@ export const useHealthCheck = (): HealthCheckState & {
         console.log("✅ Completing authentication after ALCOHOL");
 
         try {
-            refs.socket?.disconnect(); // ✅ Ensure WebSocket is disconnected
+            refs.socket?.disconnect();
             refs.socket = null;
 
             const faceId = localStorage.getItem("faceId");
@@ -213,15 +208,12 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("📡 Sending final data...");
 
-            refs.hasNavigated = true;
-            refs.sessionCount += 1;
-
             localStorage.setItem("results", JSON.stringify({
                 temperature: state.temperatureData.temperature,
                 alcohol: state.alcoholData.alcoholLevel,
             }));
 
-            refs.stopPolling = true; // ✅ Stop polling to prevent re-triggering
+            refs.stopPolling = true;
 
             navigate("/complete-authentication", { state: { success: true } });
         } catch (error) {
