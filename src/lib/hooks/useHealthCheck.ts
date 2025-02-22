@@ -132,51 +132,60 @@ export const useHealthCheck = (): HealthCheckState & {
 	);
 
 	/** ✅ Restored Alcohol Listening */
-	const listenToAlcoholData = useCallback(() => {
-		const alcoholRef = ref(db, "alcohol_value");
-		console.log("📡 Listening to Firebase alcohol data...");
 
-		refs.timeout = setTimeout(() => {
-			console.warn("⏳ No alcohol data received in time. Triggering timeout.");
-			handleTimeout();
-		}, SOCKET_TIMEOUT);
-
-		const unsubscribe = onValue(alcoholRef, (snapshot) => {
-			const data = snapshot.val();
-			if (!data) {
-				console.warn("⚠️ No valid alcohol data received from Firebase.");
-				return;
-			}
-
-			console.log("📡 Alcohol data received from Firebase:", data);
-			if (refs.alcoholMeasured) return;
-
-			let alcoholStatus = "Не определено";
-			if (data.sober === 0) alcoholStatus = "Трезвый";
-			else if (data.drunk === 0) alcoholStatus = "Пьяный";
-
-			if (alcoholStatus !== "Не определено") {
-				setState((prev) => ({
-					...prev,
-					alcoholData: { alcoholLevel: alcoholStatus },
-				}));
-
-				clearTimeout(refs.timeout!);
-				refs.alcoholMeasured = true;
-				unsubscribe();
-
-				if (state.stabilityTime >= MAX_STABILITY_TIME) {
-					console.log("🚀 Alcohol level stabilized! Executing handleComplete()");
-					handleComplete();
-				}
-			}
-		});
-
-		return () => {
-			unsubscribe();
-			clearTimeout(refs.timeout!);
-		};
-	}, [handleComplete, handleTimeout]);
+    const listenToAlcoholData = useCallback(() => {
+        const alcoholRef = ref(db, "alcohol_value");
+        console.log("📡 Listening to Firebase alcohol data...");
+    
+        refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+    
+        const unsubscribe = onValue(alcoholRef, async (snapshot) => {
+            const data = snapshot.val();
+            if (!data) {
+                console.warn("⚠️ No alcohol data received from Firebase.");
+                return;
+            }
+    
+            console.log("📡 Alcohol data received from Firebase:", data);
+    
+            // Если уже установлено значение, больше не обновляем
+            if (refs.alcoholMeasured) {
+                console.log("✅ Alcohol status already determined, ignoring updates.");
+                return;
+            }
+    
+            let alcoholStatus = "Не определено";
+    
+            if (data.sober === 0) alcoholStatus = "Трезвый";
+            else if (data.drunk === 0) alcoholStatus = "Пьяный";
+    
+            if (alcoholStatus !== "Не определено") {
+                console.log("✅ Final alcohol status detected:", alcoholStatus);
+                
+                updateState({
+                    alcoholData: { alcoholLevel: alcoholStatus },
+                });
+    
+                clearTimeout(refs.timeout!);
+    
+                refs.alcoholMeasured = true;
+    
+                console.log("❌ Unsubscribing from Firebase after final result.");
+                unsubscribe(); // Останавливаем подписку
+    
+                // ✅ Гарантируем вызов handleComplete() и предотвращаем повторный цикл
+                console.log("🚀 Executing handleComplete()");
+                navigate("/complete-authentication", { state: { success: true } });
+            }
+        });
+    
+        return () => {
+            console.log("❌ Stopping alcohol listener.");
+            unsubscribe(); // Останавливаем слушателя при выходе
+            clearTimeout(refs.timeout!);
+        };
+    }, [handleComplete, handleTimeout]);
+    
 
 	useEffect(() => {
 		if (processCompleted) return;
