@@ -73,26 +73,26 @@ export const useHealthCheck = (): HealthCheckState & {
         }
     }, [state.currentState, updateState]);
 
-    // ✅ Handles temperature data and ensures it runs **only once**
     const handleTemperatureData = useCallback(
         (data: SensorData) => {
-            if (!data?.temperature || refs.temperatureReceived) return; // ✅ Process only once
+            if (!data?.temperature || refs.temperatureReceived) return;
             console.log("📡 Temperature data received:", data);
-
+    
             refs.temperatureReceived = true;
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-
+    
             setState((prev) => {
                 const newStabilityTime = Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME);
+                console.log(`🔄 Stability Time: ${newStabilityTime}`); // Debug
+    
                 const isStable = newStabilityTime >= MAX_STABILITY_TIME;
-
                 if (isStable) {
                     console.log("✅ Temperature stable, moving to ALCOHOL state");
                     moveToNextState();
                 }
-
+    
                 return {
                     ...prev,
                     stabilityTime: newStabilityTime,
@@ -102,6 +102,7 @@ export const useHealthCheck = (): HealthCheckState & {
         },
         [handleTimeout, moveToNextState]
     );
+    
 
     // ✅ Handles alcohol data and ensures it runs only **once per session**
     const handleAlcoholData = useCallback((snapshot: DataSnapshot) => {
