@@ -5,6 +5,7 @@ import { ref, onValue } from "firebase/database";
 import { db } from "./firebase";
 import { StateKey } from "../constants";
 import toast from "react-hot-toast";
+import React from "react";
 
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
@@ -26,7 +27,8 @@ type HealthCheckState = {
 };
 
 const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
-const [processCompleted, setProcessCompleted] = useState(false);
+const [processCompleted, setProcessCompleted] = React.useState(false);
+
 
 const configureSocketListeners = (
 	socket: Socket,
