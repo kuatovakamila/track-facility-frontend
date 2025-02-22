@@ -56,6 +56,7 @@ export const useHealthCheck = (): HealthCheckState & {
         hasNavigated: false,
         sessionCount: 0,
         stopPolling: false, // ✅ Flag to stop Firebase polling
+        completed: false, // ✅ Prevent multiple handleComplete() calls
     }).current;
 
     const updateState = useCallback(
@@ -94,13 +95,12 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     const pollAlcoholData = useCallback(() => {
-        const alcoholRef = ref(db, "alcohol_value");
+        if (refs.stopPolling) return; // ✅ Stop polling if already completed
 
+        const alcoholRef = ref(db, "alcohol_value");
         console.log("🔄 Polling for alcohol data from Firebase...");
 
         const fetchAlcoholData = async () => {
-            if (refs.stopPolling) return; // ✅ Stop polling if already completed
-
             try {
                 const snapshot = await get(alcoholRef);
                 const data: FirebaseAlcoholData | null = snapshot.val();
@@ -148,11 +148,6 @@ export const useHealthCheck = (): HealthCheckState & {
         };
 
         fetchAlcoholData();
-
-        refs.timeout = setTimeout(() => {
-            console.warn("⏳ Timeout: No valid alcohol data received.");
-            handleTimeout();
-        }, SOCKET_TIMEOUT);
     }, [handleTimeout]);
 
     useEffect(() => {
@@ -181,15 +176,15 @@ export const useHealthCheck = (): HealthCheckState & {
         }
 
         return () => {
-            console.log("🛑 Cleanup function, disconnecting WebSocket.");
+            console.log("🛑 Cleanup function: Disconnecting WebSocket.");
             refs.socket?.disconnect();
             refs.socket = null;
         };
     }, [state.currentState, handleTemperatureData, pollAlcoholData]);
 
     const handleComplete = useCallback(async () => {
-        if (refs.isSubmitting) return;
-        refs.isSubmitting = true;
+        if (refs.completed) return; // ✅ Ensure we only run this once
+        refs.completed = true;
 
         console.log("🚀 Checking state sequence...");
 
@@ -202,7 +197,7 @@ export const useHealthCheck = (): HealthCheckState & {
                 stabilityTime: 0,
             });
 
-            refs.isSubmitting = false;
+            refs.completed = false;
             return;
         }
 
@@ -230,7 +225,7 @@ export const useHealthCheck = (): HealthCheckState & {
         } catch (error) {
             console.error("❌ Submission error:", error);
             toast.error("Ошибка отправки данных. Проверьте соединение.");
-            refs.isSubmitting = false;
+            refs.completed = false;
         }
     }, [state, navigate, updateState]);
 
