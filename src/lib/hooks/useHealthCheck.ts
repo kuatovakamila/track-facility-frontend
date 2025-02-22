@@ -133,7 +133,7 @@ export const useHealthCheck = (): HealthCheckState & {
     // ✅ WebSocket for TEMPERATURE
     useEffect(() => {
         if (!refs.socket) {
-            refs.socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost3001", {
+            refs.socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost:3001", {
                 transports: ["websocket"],
                 reconnection: true,
                 reconnectionAttempts: 20,
