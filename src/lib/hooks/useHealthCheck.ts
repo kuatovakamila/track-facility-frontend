@@ -12,7 +12,7 @@ const POLLING_INTERVAL = 1000; // Poll Firebase every second
 
 type SensorData = {
     temperature?: string;
-    cameraStatus?: 'failed' | 'success';
+    cameraStatus?: "failed" | "success";
 };
 
 type FirebaseAlcoholData = {
@@ -144,7 +144,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
     useEffect(() => {
         if (!refs.socket) {
-            refs.socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001', {
+            refs.socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost:3001", {
                 transports: ["websocket"],
                 reconnection: true,
                 reconnectionAttempts: 20,
@@ -179,6 +179,7 @@ export const useHealthCheck = (): HealthCheckState & {
         console.log("🚀 Checking state sequence...");
 
         const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
+
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
@@ -189,7 +190,7 @@ export const useHealthCheck = (): HealthCheckState & {
             return;
         }
 
-        // ✅ Instead of resetting, go to `/complete-authentication`
+        // ✅ Завершаем процесс после ALCOHOL
         try {
             const faceId = localStorage.getItem("faceId");
             if (!faceId) throw new Error("❌ Face ID not found");
