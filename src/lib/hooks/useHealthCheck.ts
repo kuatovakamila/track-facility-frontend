@@ -132,7 +132,6 @@ export const useHealthCheck = (): HealthCheckState & {
 	);
 
 	/** ✅ Restored Alcohol Listening */
-
     const listenToAlcoholData = useCallback(() => {
         const alcoholRef = ref(db, "alcohol_value");
         console.log("📡 Listening to Firebase alcohol data...");
@@ -148,43 +147,45 @@ export const useHealthCheck = (): HealthCheckState & {
     
             console.log("📡 Alcohol data received from Firebase:", data);
     
-            // Если уже установлено значение, больше не обновляем
             if (refs.alcoholMeasured) {
                 console.log("✅ Alcohol status already determined, ignoring updates.");
                 return;
             }
     
             let alcoholStatus = "Не определено";
-    
             if (data.sober === 0) alcoholStatus = "Трезвый";
             else if (data.drunk === 0) alcoholStatus = "Пьяный";
     
             if (alcoholStatus !== "Не определено") {
                 console.log("✅ Final alcohol status detected:", alcoholStatus);
-                
-                updateState({
+    
+                // ✅ Use Functional Updates to Ensure State Updates Correctly
+                setState((prev) => ({
+                    ...prev,
                     alcoholData: { alcoholLevel: alcoholStatus },
-                });
+                }));
     
                 clearTimeout(refs.timeout!);
-    
                 refs.alcoholMeasured = true;
     
                 console.log("❌ Unsubscribing from Firebase after final result.");
-                unsubscribe(); // Останавливаем подписку
+                unsubscribe(); // Stop listener after getting valid data
     
-                // ✅ Гарантируем вызов handleComplete() и предотвращаем повторный цикл
-                console.log("🚀 Executing handleComplete()");
-                navigate("/complete-authentication", { state: { success: true } });
+                // ✅ Ensure navigation happens only after state updates
+                setTimeout(() => {
+                    console.log("🚀 Executing handleComplete()");
+                    handleComplete();
+                }, 100); // ✅ Ensure state is updated before navigating
             }
         });
     
         return () => {
             console.log("❌ Stopping alcohol listener.");
-            unsubscribe(); // Останавливаем слушателя при выходе
+            unsubscribe(); // Stop listener on unmount
             clearTimeout(refs.timeout!);
         };
     }, [handleComplete, handleTimeout]);
+    
     
 
 	useEffect(() => {
