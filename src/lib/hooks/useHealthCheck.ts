@@ -107,7 +107,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
     useEffect(() => {
         if (!refs.socket) {
-            refs.socket = io(import.meta.env.VITE_SERVER_URL, {
+            refs.socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost:3001", {
                 transports: ["websocket"],
                 reconnection: true,
                 reconnectionAttempts: 20,
@@ -139,7 +139,7 @@ export const useHealthCheck = (): HealthCheckState & {
     // Retrieve alcohol level from Firebase
     useEffect(() => {
         if (state.currentState === "ALCOHOL") {
-            const alcoholRef = ref(db, "healthCheck/alcoholLevel");
+            const alcoholRef = ref(db, "alcohol_value");
 
             const listener = onValue(alcoholRef, (snapshot) => {
                 const data = snapshot.val();
