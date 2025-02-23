@@ -90,8 +90,14 @@ export const useHealthCheck = (): HealthCheckState & {
             
             refs.finalAlcoholLevel = "COMPLETED"; // ✅ Block further state changes
     
-            // 🔥 FORCE NAVIGATION TO COMPLETE AUTHENTICATION SCREEN
-            navigate("/health-check", { replace: true });
+            navigate("/final-results", {
+                state: {
+                    temperature: state.temperatureData.temperature,
+                    alcoholLevel: state.alcoholData.alcoholLevel,
+                },
+                replace: true,
+            });
+            
     
             // ✅ Stop further execution
             return;

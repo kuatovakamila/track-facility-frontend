@@ -4,6 +4,7 @@ import FaceIdentification from "./pages/FaceIdentification";
 import HealthCheck from "./pages/HealthCheck";
 import CompleteAuthentication from "./pages/CompleteAuthentication";
 import { Toaster } from "react-hot-toast";
+import FinalResults from "./pages/FinalResults";
 
 function App() {
 	return (
@@ -16,6 +17,7 @@ function App() {
 						element={<FaceIdentification />}
 					/>
 					<Route path="/health-check" element={<HealthCheck />} />
+					<Route path="/final-results" element={<FinalResults />} />
 					<Route
 						path="/complete-authentication"
 						element={<CompleteAuthentication />}
