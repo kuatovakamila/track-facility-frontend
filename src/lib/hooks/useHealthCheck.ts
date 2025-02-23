@@ -6,7 +6,7 @@ import { StateKey } from "../constants";
 
 // Constants
 const MAX_STABILITY_TIME = 7; // 7 seconds for progress completion
-const SOCKET_TIMEOUT = 7000; // 7 seconds timeout before showing an error
+const SOCKET_TIMEOUT = 15000; // 7 seconds timeout before showing an error
 
 // Define sensor data types
 type SensorData = {
