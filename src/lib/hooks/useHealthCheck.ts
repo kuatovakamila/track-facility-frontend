@@ -98,7 +98,7 @@ export const useHealthCheck = (): HealthCheckState & {
             if (!faceId) throw new Error("Face ID not found");
     
             console.log("🚀 Submitting health check data...");
-            const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/health`, {
+            const response = await fetch(`http://localhost:3000/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
