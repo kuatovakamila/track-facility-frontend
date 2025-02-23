@@ -91,7 +91,7 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.finalAlcoholLevel = "COMPLETED"; // ✅ Block further state changes
     
             // 🔥 FORCE NAVIGATION TO COMPLETE AUTHENTICATION SCREEN
-            navigate("/", { replace: true });
+            navigate("/health-check", { replace: true });
     
             // ✅ Stop further execution
             return;
