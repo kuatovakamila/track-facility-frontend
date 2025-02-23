@@ -40,14 +40,18 @@ export default function HealthCheck() {
 				</AnimatePresence>
 
 				<div className="flex flex-col items-center gap-4">
-					<LoadingCircle
-						key={currentState}
-						icon={state.icon}
-						value={displayValue}
-						unit={state.unit}
-						progress={(stabilityTime / MAX_STABILITY_TIME) * 100}
-						onComplete={handleComplete}
-					/>
+				<LoadingCircle
+    key={currentState}
+    icon={state.icon}
+    value={displayValue}
+    unit={state.unit}
+    progress={
+        alcoholData.alcoholLevel !== "Не определено"
+            ? 100 // ✅ Instantly set progress to 100% when alcohol is received
+            : (stabilityTime / MAX_STABILITY_TIME) * 100
+    }
+    onComplete={handleComplete} // ✅ handleComplete will navigate only once
+/>
 
 					{displayValue === "loading" && (
 						<span className="text-sm text-gray-400">

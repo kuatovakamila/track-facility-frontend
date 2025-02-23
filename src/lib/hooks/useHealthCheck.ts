@@ -112,6 +112,12 @@ export const useHealthCheck = (): HealthCheckState & {
                 return;
             }
     
+            // ✅ Stop updates if authentication is already completed
+            if (refs.finalAlcoholLevel === "COMPLETED") {
+                console.warn("🚫 Ignoring updates after authentication is complete.");
+                return;
+            }
+    
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT); // ⏳ Reset timeout to 15s
@@ -123,15 +129,23 @@ export const useHealthCheck = (): HealthCheckState & {
     
                 console.log(`✅ Alcohol detected as "${alcoholStatus}", FORCE NAVIGATING to authentication...`);
                 
-                // 🔥 FORCE NAVIGATION TO COMPLETE AUTHENTICATION SCREEN
-                handleComplete();
+                // 🔥 Immediately stop the state updates
+                setState((prev) => ({
+                    ...prev,
+                    stabilityTime: MAX_STABILITY_TIME, // ✅ Instantly set progress to 100%
+                    alcoholData: { alcoholLevel: alcoholStatus },
+                }));
+    
+                handleComplete(); // 🔥 Force navigation to authentication page
                 
-                // ✅ Stop any further execution
-                return;
+                return; // ✅ Prevent further execution
             }
     
             setState((prev) => ({
                 ...prev,
+                temperatureData: prev.currentState === "TEMPERATURE"
+                    ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 }
+                    : prev.temperatureData,
                 alcoholData: prev.currentState === "ALCOHOL"
                     ? { alcoholLevel: refs.finalAlcoholLevel || "Не определено" }
                     : prev.alcoholData,
@@ -139,6 +153,7 @@ export const useHealthCheck = (): HealthCheckState & {
         },
         [handleComplete]
     );
+    
     
 
     useEffect(() => {
