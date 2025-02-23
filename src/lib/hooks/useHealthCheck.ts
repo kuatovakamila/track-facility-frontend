@@ -131,7 +131,7 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.socket) return;
         refs.hasTimedOut = false;
 
-        const socket = io(import.meta.env.VITE_SERVER_URL, {
+        const socket = io('http://localhost:3001', {
             transports: ["websocket"],
             reconnection: true,
             reconnectionAttempts: 20,
@@ -187,7 +187,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("📡 Sending final data:", finalData);
 
-            const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/health`, {
+            const response = await fetch(`http://localhost:3001/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(finalData),
