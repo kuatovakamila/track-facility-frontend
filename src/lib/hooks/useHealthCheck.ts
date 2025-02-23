@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
+import { toast } from "react-toastify";
 import { StateKey } from "../constants";
 
 // Constants
-const MAX_STABILITY_TIME = 7;
-const SOCKET_TIMEOUT = 15000;
+const MAX_STABILITY_TIME = 7; // 7 seconds for progress completion
+const SOCKET_TIMEOUT = 7000; // 7 seconds timeout before showing an error
 
 // Define sensor data types
 type SensorData = {
@@ -22,29 +23,6 @@ type HealthCheckState = {
     secondsLeft: number;
 };
 
-const configureSocketListeners = (
-    socket: Socket,
-    currentState: StateKey,
-    handlers: {
-        onData: (data: SensorData) => void;
-        onError: () => void;
-    }
-) => {
-    socket.off("temperature");
-    socket.off("alcohol");
-    socket.off("camera");
-
-    console.log(`🔄 Setting up WebSocket listeners for state: ${currentState}`);
-
-    if (currentState === "TEMPERATURE") {
-        socket.on("temperature", handlers.onData);
-    } else if (currentState === "ALCOHOL") {
-        socket.on("alcohol", handlers.onData);
-    }
-
-    socket.on("camera", handlers.onData);
-};
-
 export const useHealthCheck = (): HealthCheckState & {
     handleComplete: () => Promise<void>;
     setCurrentState: React.Dispatch<React.SetStateAction<StateKey>>;
@@ -55,7 +33,7 @@ export const useHealthCheck = (): HealthCheckState & {
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: "Не определено" },
-        secondsLeft: 15,
+        secondsLeft: 7,
     });
 
     const refs = useRef({
@@ -64,6 +42,7 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
+        finalAlcoholLevel: "", // Store the final alcohol level
     }).current;
 
     const updateState = useCallback(
@@ -76,33 +55,24 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
-        console.warn("⏳ Timeout reached, retrying alcohol measurement...");
-    
-        setState((prev) => {
-            if (prev.currentState === "ALCOHOL") {
-                console.warn("⚠️ Alcohol sensor timeout, waiting for new data...");
-                return { ...prev, stabilityTime: 0 }; // Reset progress to retry
-            }
-            return prev; // No reset needed if in another state
-        });
-    
-        // Reset timeout flag so we keep listening
-        refs.hasTimedOut = false;
-    }, []);
-    
+        console.warn("⏳ Timeout reached, showing error and navigating home...");
+
+        toast.error("Ошибка измерения. Пожалуйста, попробуйте снова.");
+        navigate("/", { replace: true });
+    }, [navigate]);
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
         refs.isSubmitting = true;
-    
+
         try {
             console.log("🔌 Disconnecting all WebSockets before authentication...");
             refs.socket?.off("temperature");
             refs.socket?.off("alcohol");
             refs.socket?.disconnect();
-    
+
             const faceId = localStorage.getItem("faceId");
             if (!faceId) throw new Error("Face ID not found");
-    
+
             console.log("🚀 Submitting health check data...");
             const response = await fetch(`http://localhost:3001/health`, {
                 method: "POST",
@@ -113,38 +83,38 @@ export const useHealthCheck = (): HealthCheckState & {
                     faceId,
                 }),
             });
-    
+
             if (!response.ok) throw new Error("Request failed");
-    
+
             navigate("/complete-authentication", { replace: true });
         } catch (error) {
             console.error("❌ Submission error:", error);
             refs.isSubmitting = false;
         }
     }, [state, navigate]);
-    
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             console.log("📡 Received sensor data:", JSON.stringify(data));
-    
+
             if (!data || (!data.temperature && !data.alcoholLevel)) {
                 console.warn("⚠️ No valid sensor data received");
                 return;
             }
-    
+
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT); // Reset timeout every time data is received
-    
-            let alcoholStatus = state.alcoholData.alcoholLevel;
+
+            let alcoholStatus = refs.finalAlcoholLevel || state.alcoholData.alcoholLevel;
             if (data.alcoholLevel !== undefined && data.alcoholLevel !== null) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
+                refs.finalAlcoholLevel = alcoholStatus; // Store the final alcohol level and never overwrite
             }
-    
+
             setState((prev) => {
                 let nextState = prev.currentState;
                 let nextStabilityTime = prev.stabilityTime + 1;
-    
+
                 if (prev.currentState === "TEMPERATURE") {
                     if (nextStabilityTime >= MAX_STABILITY_TIME) {
                         nextState = "ALCOHOL";
@@ -153,18 +123,18 @@ export const useHealthCheck = (): HealthCheckState & {
                         refs.socket?.off("temperature");
                     }
                 }
-    
+
                 if (prev.currentState === "ALCOHOL") {
-                    if (prev.alcoholData.alcoholLevel === "Не определено" && alcoholStatus !== "Не определено") {
-                        nextStabilityTime = 0; // Reset stability time when valid data arrives
+                    if (refs.finalAlcoholLevel !== "") {
+                        nextStabilityTime = prev.stabilityTime + 1; // Start progress when final alcohol state is received
                     }
-    
+
                     if (nextStabilityTime >= MAX_STABILITY_TIME) {
                         console.log("✅ Alcohol measurement complete, navigating to authentication...");
                         handleComplete();
                     }
                 }
-    
+
                 return {
                     ...prev,
                     stabilityTime: nextStabilityTime,
@@ -172,7 +142,7 @@ export const useHealthCheck = (): HealthCheckState & {
                         ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 }
                         : prev.temperatureData,
                     alcoholData: prev.currentState === "ALCOHOL"
-                        ? { alcoholLevel: alcoholStatus }
+                        ? { alcoholLevel: refs.finalAlcoholLevel || "Не определено" }
                         : prev.alcoholData,
                     currentState: nextState,
                 };
@@ -180,9 +150,7 @@ export const useHealthCheck = (): HealthCheckState & {
         },
         [handleComplete]
     );
-    
-    
-    
+
     useEffect(() => {
         if (!refs.socket) {
             refs.socket = io('http://localhost:3001', {
@@ -192,14 +160,26 @@ export const useHealthCheck = (): HealthCheckState & {
                 reconnectionDelay: 1000,
             });
         }
-        configureSocketListeners(refs.socket, state.currentState, {
-            onData: handleDataEvent,
-            onError: handleTimeout,
-        });
+
+        refs.socket.off("temperature");
+        refs.socket.off("alcohol");
+        refs.socket.off("camera");
+
+        console.log(`🔄 Setting up WebSocket listeners for state: ${state.currentState}`);
+
+        if (state.currentState === "TEMPERATURE") {
+            refs.socket.on("temperature", handleDataEvent);
+        } else if (state.currentState === "ALCOHOL") {
+            refs.socket.on("alcohol", handleDataEvent);
+        }
+
+        refs.socket.on("camera", handleDataEvent);
+
+        refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT); // Start the timeout
     }, [state.currentState, handleTimeout, handleDataEvent]);
 
-   
-    
+  
+
     return {
         ...state,
         handleComplete,
