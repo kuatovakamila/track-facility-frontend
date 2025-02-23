@@ -74,7 +74,7 @@ export const useHealthCheck = (): HealthCheckState & {
             if (!faceId) throw new Error("Face ID not found");
     
             console.log("🚀 Submitting health check data...");
-            const response = await fetch(`http://localhost:3001/health`, {
+            const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -86,11 +86,15 @@ export const useHealthCheck = (): HealthCheckState & {
     
             if (!response.ok) throw new Error("Request failed");
     
-            console.log("✅ Authentication complete, navigating to authentication screen...");
+            console.log("✅ Authentication complete, FORCE NAVIGATING to authentication screen...");
             
-            refs.finalAlcoholLevel = "COMPLETED"; // ✅ Mark process as completed
+            refs.finalAlcoholLevel = "COMPLETED"; // ✅ Block further state changes
     
+            // 🔥 FORCE NAVIGATION TO COMPLETE AUTHENTICATION SCREEN
             navigate("/complete-authentication", { replace: true });
+    
+            // ✅ Stop further execution
+            return;
     
         } catch (error) {
             console.error("❌ Submission error:", error);
@@ -98,18 +102,13 @@ export const useHealthCheck = (): HealthCheckState & {
         }
     }, [state, navigate]);
     
+    
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             console.log("📡 Received sensor data:", JSON.stringify(data));
     
             if (!data || (!data.temperature && !data.alcoholLevel)) {
                 console.warn("⚠️ No valid sensor data received");
-                return;
-            }
-    
-            // ✅ Stop updates if authentication is already completed
-            if (refs.finalAlcoholLevel === "COMPLETED") {
-                console.warn("🚫 Ignoring updates after authentication is complete.");
                 return;
             }
     
@@ -122,37 +121,21 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
                 refs.finalAlcoholLevel = alcoholStatus; // Store final alcohol state
     
-                // ✅ Immediately navigate when alcohol status is detected
-                console.log(`✅ Alcohol detected as "${alcoholStatus}", navigating to authentication...`);
+                console.log(`✅ Alcohol detected as "${alcoholStatus}", FORCE NAVIGATING to authentication...`);
+                
+                // 🔥 FORCE NAVIGATION TO COMPLETE AUTHENTICATION SCREEN
                 handleComplete();
-                return; // Prevent further state updates
+                
+                // ✅ Stop any further execution
+                return;
             }
     
-            setState((prev) => {
-                let nextState = prev.currentState;
-                let nextStabilityTime = prev.stabilityTime + 1;
-    
-                if (prev.currentState === "TEMPERATURE") {
-                    if (nextStabilityTime >= MAX_STABILITY_TIME) {
-                        nextState = "ALCOHOL";
-                        nextStabilityTime = 0;
-                        console.log("🔌 Switching to ALCOHOL state, disconnecting temperature WebSocket...");
-                        refs.socket?.off("temperature");
-                    }
-                }
-    
-                return {
-                    ...prev,
-                    stabilityTime: nextStabilityTime,
-                    temperatureData: prev.currentState === "TEMPERATURE"
-                        ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 }
-                        : prev.temperatureData,
-                    alcoholData: prev.currentState === "ALCOHOL"
-                        ? { alcoholLevel: refs.finalAlcoholLevel || "Не определено" }
-                        : prev.alcoholData,
-                    currentState: nextState,
-                };
-            });
+            setState((prev) => ({
+                ...prev,
+                alcoholData: prev.currentState === "ALCOHOL"
+                    ? { alcoholLevel: refs.finalAlcoholLevel || "Не определено" }
+                    : prev.alcoholData,
+            }));
         },
         [handleComplete]
     );
