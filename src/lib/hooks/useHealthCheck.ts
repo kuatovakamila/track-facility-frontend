@@ -165,99 +165,94 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     useEffect(() => {
-        if (refs.socket) return;
-        refs.hasTimedOut = false;
-
-        const socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001', {
+        const socket = io('http://localhost:3001', {
             transports: ["websocket"],
             reconnection: true,
             reconnectionAttempts: 20,
             reconnectionDelay: 10000,
         });
-
+    
         socket.on("connect", () => {
-            console.log("✅ WebSocket connected successfully.");
             refs.socket = socket;
         });
-
-        socket.on("disconnect", (reason) => {
-            console.warn("⚠️ WebSocket disconnected:", reason);
-        });
-
+    
         configureSocketListeners(socket, state.currentState, {
             onData: handleDataEvent,
             onError: handleTimeout,
         });
-
+    
         return () => {
+            socket.off("connect_error");
+            socket.off("error");
+            socket.off("temperature");
+            socket.off("alcohol");
+            socket.off("camera");
             socket.disconnect();
             refs.socket = null;
         };
-    }, [state.currentState, handleTimeout, handleDataEvent, navigate]);
+    }, [state.currentState, handleDataEvent, handleTimeout]);
+    
 
     const handleComplete = useCallback(async () => {
-        if (refs.isSubmitting) return;
+        if (refs.isSubmitting || refs.hasNavigated) return;
+    
         refs.isSubmitting = true;
-
-        console.log("🚀 Checking state sequence...");
-
+        refs.hasNavigated = true;
+    
         const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0, // ✅ Reset stability time
+                stabilityTime: 0,
             });
-
             refs.isSubmitting = false;
+            refs.hasNavigated = false;
             return;
         }
-
+    
         try {
             const faceId = localStorage.getItem("faceId");
-            if (!faceId) throw new Error("❌ Face ID not found");
-
+            if (!faceId) {
+                throw new Error("Face ID не найден.");
+            }
+    
             const finalData = {
                 temperatureData: state.temperatureData,
                 alcoholData: state.alcoholData,
                 faceId,
             };
-
-            console.log("📡 Sending final data:", finalData);
-
-            const response = await fetch( 'http://localhost:3001/health', {
+    
+            const response = await fetch(`http://localhost:3001/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(finalData),
             });
-
+    
             if (!response.ok) {
-                throw new Error(`❌ Server responded with status: ${response.status}`);
+                throw new Error(`Сервер ответил со статусом: ${response.status}`);
             }
-
-            console.log("✅ Submission successful, navigating to complete authentication...");
-
+    
             localStorage.setItem("results", JSON.stringify({
                 temperature: state.temperatureData.temperature,
                 alcohol: state.alcoholData.alcoholLevel,
             }));
-
-            
-			resetSession()
-
+    
+            resetSession();
+    
             navigate("/complete-authentication", { state: { success: true } });
-
-			setTimeout(() => {
-                console.log("⏳ Waiting 4 seconds before navigating to home...");
+    
+            setTimeout(() => {
                 navigate("/");
-               
             }, 4000);
-
-        } catch (error) {
+    
+        } catch (error: any) {
             console.error("❌ Submission error:", error);
-            toast.error("Ошибка отправки данных. Проверьте соединение.");
+            toast.error(`Ошибка отправки данных: ${error.message}`);
             refs.isSubmitting = false;
+            refs.hasNavigated = false;
         }
     }, [state, navigate, updateState]);
+    
 
     return {
         ...state,
