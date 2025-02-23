@@ -85,6 +85,8 @@ export const useHealthCheck = (): HealthCheckState & {
         }
     }, [navigate, state.currentState]);
     
+
+    
     
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
