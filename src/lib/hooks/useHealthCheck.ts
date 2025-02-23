@@ -108,10 +108,9 @@ export const useHealthCheck = (): HealthCheckState & {
                     prev.currentState === "TEMPERATURE" &&
                     prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
     
-                const nextState =
-                    isTemperatureStable && data.alcoholLevel !== undefined // ✅ Only switch if alcohol level exists
-                        ? "ALCOHOL"
-                        : prev.currentState;
+                if (isTemperatureStable) {
+                    console.log("🔄 Transitioning to ALCOHOL state...");
+                }
     
                 return {
                     ...prev,
@@ -122,12 +121,13 @@ export const useHealthCheck = (): HealthCheckState & {
                     alcoholData: prev.currentState === "ALCOHOL"
                         ? { alcoholLevel: alcoholStatus }
                         : prev.alcoholData,
-                    currentState: nextState,
+                    currentState: isTemperatureStable ? "ALCOHOL" : prev.currentState,
                 };
             });
         },
         [handleTimeout]
     );
+    
     
 
     useEffect(() => {
