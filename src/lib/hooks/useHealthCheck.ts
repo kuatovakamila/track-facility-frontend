@@ -75,6 +75,7 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
+        hasNavigated: false,
     }).current;
 
     const updateState = useCallback(
@@ -85,7 +86,7 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     const handleTimeout = useCallback(() => {
-        if (refs.hasTimedOut) return;
+        if (refs.hasTimedOut || refs.hasNavigated) return;
         refs.hasTimedOut = true;
 
         toast.error(TIMEOUT_MESSAGE, {
@@ -112,40 +113,25 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
             }
 
-            setState((prev) => {
-                if (prev.currentState === "ALCOHOL") {
-                    console.log("✅ Alcohol data received, instantly completing progress.");
-                    return {
-                        ...prev,
-                        stabilityTime: MAX_STABILITY_TIME, // ✅ Instantly set progress to max
-                        alcoholData: { alcoholLevel: alcoholStatus },
-                    };
-                }
+            setState((prev) => ({
+                ...prev,
+                stabilityTime: prev.currentState === "ALCOHOL" ? MAX_STABILITY_TIME : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
+                alcoholData: prev.currentState === "ALCOHOL" ? { alcoholLevel: alcoholStatus } : prev.alcoholData,
+                temperatureData: prev.currentState === "TEMPERATURE" ? { temperature: Number(data.temperature) || 0 } : prev.temperatureData,
+            }));
 
-                return {
-                    ...prev,
-                    stabilityTime: prev.currentState === "TEMPERATURE"
-                        ? Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME)
-                        : prev.stabilityTime,
-                    temperatureData: prev.currentState === "TEMPERATURE"
-                        ? { temperature: Number(data.temperature) || 0 }
-                        : prev.temperatureData,
-                };
-            });
-
-            // 🚀 Immediately trigger handleComplete when alcohol data is received
             if (state.currentState === "ALCOHOL") {
                 setTimeout(handleComplete, 300);
             }
         },
-        [handleTimeout]
+        [handleTimeout, navigate]
     );
 
     useEffect(() => {
         if (refs.socket) return;
         refs.hasTimedOut = false;
 
-        const socket = io('http://localhost:3001', {
+        const socket = io(import.meta.env.VITE_SERVER_URL, {
             transports: ["websocket"],
             reconnection: true,
             reconnectionAttempts: 20,
@@ -182,7 +168,7 @@ export const useHealthCheck = (): HealthCheckState & {
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0, // ✅ Reset stability time
+                stabilityTime: 0,
             });
 
             refs.isSubmitting = false;
@@ -201,7 +187,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("📡 Sending final data:", finalData);
 
-            const response = await fetch(`http:localhost:3001/health`, {
+            const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(finalData),
@@ -213,14 +199,16 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("✅ Submission successful, navigating to complete authentication...");
 
-            localStorage.setItem("results", JSON.stringify({
-                temperature: state.temperatureData.temperature,
-                alcohol: state.alcoholData.alcoholLevel,
-            }));
-
             refs.socket?.disconnect();
 
+            // ✅ Navigate to complete authentication first
             navigate("/complete-authentication", { state: { success: true } });
+
+            // ✅ Wait 4 seconds, then navigate to the home screen
+            setTimeout(() => {
+                console.log("⏳ Waiting 4 seconds before navigating to home...");
+                navigate("/");
+            }, 4000); // 4000ms = 4 seconds
 
         } catch (error) {
             console.error("❌ Submission error:", error);
