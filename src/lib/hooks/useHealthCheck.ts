@@ -55,10 +55,24 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
+    
         console.warn("⏳ Timeout reached, showing error and navigating home...");
+    
+        if (state.currentState === "ALCOHOL") {
+            toast.error("Вы неправильно подули, повторите попытку.", {
+                style: {
+                    background: "#ff4d4d", // Red background
+                    color: "#fff",
+                    borderRadius: "8px",
+                },
+            });
+        } else {
+            toast.error("Ошибка измерения. Пожалуйста, попробуйте снова.");
+        }
+    
         navigate("/", { replace: true });
-        toast.error("Ошибка измерения. Пожалуйста, попробуйте снова.");
-    }, [navigate]);
+    }, [navigate, state.currentState]);
+    
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
         refs.isSubmitting = true;
