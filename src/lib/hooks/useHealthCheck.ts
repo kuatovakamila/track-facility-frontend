@@ -152,6 +152,17 @@ export const useHealthCheck = (): HealthCheckState & {
         refs.isSubmitting = true;
     
         try {
+            console.log("📝 Saving final temperature and alcohol data...");
+    
+            // ✅ Save final temperature and alcohol data before disconnecting WebSockets
+            setState((prev) => ({
+                ...prev,
+                temperatureData: prev.temperatureData || { temperature: 0 },
+                alcoholData: prev.alcoholData || { alcoholLevel: "Не определено" },
+            }));
+    
+            console.log("✅ Final Data Saved:", state.temperatureData, state.alcoholData);
+    
             console.log("🔌 Disconnecting all WebSockets before authentication...");
             refs.socket?.off("temperature");
             refs.socket?.off("alcohol");
@@ -173,12 +184,15 @@ export const useHealthCheck = (): HealthCheckState & {
     
             if (!response.ok) throw new Error("Request failed");
     
+            console.log("✅ Navigation to complete authentication...");
             navigate("/complete-authentication", { replace: true });
+    
         } catch (error) {
             console.error("❌ Submission error:", error);
             refs.isSubmitting = false;
         }
     }, [state, navigate, refs]);
+    
     
     return {
         ...state,
