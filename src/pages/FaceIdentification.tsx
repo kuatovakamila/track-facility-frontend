@@ -7,7 +7,7 @@ import { useCamera } from "../lib/hooks/useCamera";
 import toast from "react-hot-toast";
 import { faceRecognitionService } from "../lib/services/faceRecognitionService";
 import { ERROR_MESSAGES } from "../lib/constants";
-import { FaRegSmileBeam, FaRegTimesCircle, FaFingerprint } from "react-icons/fa"; 
+
 
 export default function FaceIdentification() {
     const [isProcessing, setIsProcessing] = useState(false);
@@ -76,12 +76,12 @@ export default function FaceIdentification() {
         ? "🔍 Проверка..."
         : cameraError || error || "📸 Сканируйте своё лицо для подтверждения";
 
-    const renderStatusIcon = () => {
-        if (loading) return <FaFingerprint className="text-white text-6xl animate-pulse" />;
-        if (isProcessing) return <FaFingerprint className="text-white text-6xl animate-spin" />;
-        if (error || cameraError) return <FaRegTimesCircle className="text-white text-6xl" />;
-        return <FaRegSmileBeam className="text-white text-6xl" />;
-    };
+    // const renderStatusIcon = () => {
+    //     if (loading) return <FaFingerprint className="text-white text-6xl animate-pulse" />;
+    //     if (isProcessing) return <FaFingerprint className="text-white text-6xl animate-spin" />;
+    //     if (error || cameraError) return <FaRegTimesCircle className="text-white text-6xl" />;
+    //     return <FaRegSmileBeam className="text-white text-6xl" />;
+    // };
 
     return (
         <div className="min-h-screen bg-black text-white flex flex-col">
@@ -96,14 +96,14 @@ export default function FaceIdentification() {
                     🏆 Распознавание лица
                 </motion.h1>
 
-                <motion.div
+                {/* <motion.div
                     className="mb-4"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.2 }}
                 >
                     {renderStatusIcon()}
-                </motion.div>
+                </motion.div> */}
 
                 <motion.p
                     className={`text-center text-gray-400 mb-8 ${isProcessing ? "text-yellow-400" : ""}`}
