@@ -1,16 +1,26 @@
-import { useLocation } from "react-router-dom";
+import { useNavigate , useLocation } from "react-router-dom";
 import { Header } from "../components/Header";
 import { motion } from "framer-motion";
+import { useEffect } from "react";
+
 
 export default function FinalResults() {
+    const navigate = useNavigate();
     const location = useLocation();
-
 
     // Extract data passed via navigation state
     const { temperature, alcoholLevel } = location.state || {
         temperature: "Неизвестно",
         alcoholLevel: "Неизвестно",
     };
+    useEffect(() => {
+        const timeout = setTimeout(() => {
+            console.log("🔄 Auto-navigating to home after 7 seconds...");
+            navigate("/", { replace: true });
+        }, 7000); // 7 seconds delay
+
+        return () => clearTimeout(timeout); // Cleanup to prevent memory leaks
+    }, [navigate]);
 
     return (
         <div className="min-h-screen bg-black text-white flex flex-col">
