@@ -1,10 +1,10 @@
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { Header } from "../components/Header";
 import { motion } from "framer-motion";
 
 export default function FinalResults() {
     const location = useLocation();
-    const navigate = useNavigate();
+
 
     // Extract data passed via navigation state
     const { temperature, alcoholLevel } = location.state || {
@@ -31,20 +31,7 @@ export default function FinalResults() {
                     </div>
                 </div>
 
-                <div className="mt-8 flex gap-4">
-                    <button
-                        onClick={() => navigate("/")}
-                        className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-lg transition"
-                    >
-                        На главную
-                    </button>
-                    <button
-                        onClick={() => navigate("/health-check")}
-                        className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg transition"
-                    >
-                        Повторить проверку
-                    </button>
-                </div>
+               
             </motion.div>
         </div>
     );

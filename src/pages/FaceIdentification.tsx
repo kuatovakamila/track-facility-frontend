@@ -82,9 +82,9 @@ export default function FaceIdentification() {
 		<div className="min-h-screen bg-black text-white flex flex-col">
 			<Header />
 
-			<div className="flex-1 flex flex-col items-center justify-center p-6">
+			<div className="flex-1 flex flex-col items-center justify-center p-8">
 				<motion.h1
-					className="text-2xl font-medium mb-2"
+					className="text-4xl font-bold mb-6"
 					initial={{ opacity: 0, y: -20 }}
 					animate={{ opacity: 1, y: 0 }}
 				>
@@ -92,7 +92,7 @@ export default function FaceIdentification() {
 				</motion.h1>
 
 				<motion.p
-					className="text-center text-gray-400 mb-8"
+					className="text-center text-lg text-gray-300 mb-10"
 					initial={{ opacity: 0 }}
 					animate={{ opacity: 1 }}
 					transition={{ delay: 0.2 }}
@@ -100,11 +100,13 @@ export default function FaceIdentification() {
 					{errorMessage}
 				</motion.p>
 
-				<VideoDisplay
-					videoRef={videoRef}
-					canvasRef={canvasRef}
-					isProcessing={isProcessing}
-				/>
+				<div className="w-full max-w-3xl h-[480px] rounded-lg overflow-hidden shadow-lg border-4 border-gray-700">
+					<VideoDisplay
+						videoRef={videoRef}
+						canvasRef={canvasRef}
+						isProcessing={isProcessing}
+					/>
+				</div>
 			</div>
 		</div>
 	);
