@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
-import { toast } from "react-toastify";
+import { toast } from "react-hot-toast";
 import { StateKey } from "../constants";
 
 // Constants
@@ -59,25 +59,14 @@ export const useHealthCheck = (): HealthCheckState & {
     
         if (state.currentState === "ALCOHOL") {
             console.log("🚨 Showing toast error: Вы неправильно подули, повторите попытку.");
-            toast.error("Вы неправильно подули, повторите попытку.", {
-                position: "top-right",
-                autoClose: 4000,
-                hideProgressBar: false,
-                closeOnClick: true,
-                pauseOnHover: true,
-                draggable: true,
-                progress: undefined,
-            });
+            toast.error("Вы неправильно подули, повторите попытку.");
     
             // 🔥 Delay navigation by 1 second to allow toast to appear
             setTimeout(() => {
                 navigate("/", { replace: true });
             }, 1000);
         } else {
-            toast.error("Ошибка измерения. Пожалуйста, попробуйте снова.", {
-                position: "top-right",
-                autoClose: 4000,
-            });
+            toast.error("Ошибка измерения. Пожалуйста, попробуйте снова.");
     
             setTimeout(() => {
                 navigate("/", { replace: true });
