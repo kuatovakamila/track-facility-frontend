@@ -56,9 +56,8 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
         console.warn("⏳ Timeout reached, showing error and navigating home...");
-
-        toast.error("Ошибка измерения. Пожалуйста, попробуйте снова.");
         navigate("/", { replace: true });
+        toast.error("Ошибка измерения. Пожалуйста, попробуйте снова.");
     }, [navigate]);
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
