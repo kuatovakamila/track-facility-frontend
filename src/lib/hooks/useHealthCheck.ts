@@ -79,34 +79,32 @@ export const useHealthCheck = (): HealthCheckState & {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     temperatureData: state.temperatureData,
-                    alcoholData: state.alcoholData,
+                    alcoholData: { alcoholLevel: refs.finalAlcoholLevel }, // ✅ Use final value
                     faceId,
                 }),
             });
     
             if (!response.ok) throw new Error("Request failed");
     
-            console.log("✅ Authentication complete, FORCE NAVIGATING to authentication screen...");
+            console.log("✅ Authentication complete, FORCE NAVIGATING to Final Results...");
             
-            refs.finalAlcoholLevel = "COMPLETED"; // ✅ Block further state changes
+            refs.finalAlcoholLevel = refs.finalAlcoholLevel || state.alcoholData.alcoholLevel; // ✅ Ensure final value is used
     
             navigate("/final-results", {
                 state: {
                     temperature: state.temperatureData.temperature,
-                    alcoholLevel: state.alcoholData.alcoholLevel,
+                    alcoholLevel: refs.finalAlcoholLevel, // ✅ Use correct final alcohol level
                 },
                 replace: true,
             });
-            
     
-            // ✅ Stop further execution
             return;
-    
         } catch (error) {
             console.error("❌ Submission error:", error);
             refs.isSubmitting = false;
         }
     }, [state, navigate]);
+    
     
     const handleDataEvent = useCallback(
         (data: SensorData) => {
