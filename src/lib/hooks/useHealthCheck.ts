@@ -1,6 +1,3 @@
-
-
-
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
@@ -78,7 +75,6 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
-		hasNavigated:false
     }).current;
 
     const updateState = useCallback(
@@ -87,19 +83,6 @@ export const useHealthCheck = (): HealthCheckState & {
         },
         []
     );
-	// const resetSession = () => {
-    //     console.log("🔄 Resetting session...");
-    //     refs.hasNavigated = false;
-    //     refs.isSubmitting = false;
-    //     refs.hasTimedOut = false;
-    //     setState({
-    //         currentState: "TEMPERATURE",
-    //         stabilityTime: 0,
-    //         temperatureData: { temperature: 0 },
-    //         alcoholData: { alcoholLevel: "Не определено" },
-    //         secondsLeft: 15,
-    //     });
-    // };
 
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
@@ -126,13 +109,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
             let alcoholStatus = "Не определено";
             if (data.alcoholLevel) {
-                alcoholStatus = data.alcoholLevel
-                if (alcoholStatus==="normal") {
-                    alcoholStatus='Трезвый'
-                }
-                else if (alcoholStatus==='abnormal') {
- alcoholStatus='Пьяный'
-                }
+                alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
             }
 
             setState((prev) => {
@@ -168,7 +145,7 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.socket) return;
         refs.hasTimedOut = false;
 
-        const socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001', {
+        const socket = io('http://localhost:3001', {
             transports: ["websocket"],
             reconnection: true,
             reconnectionAttempts: 20,
@@ -196,64 +173,61 @@ export const useHealthCheck = (): HealthCheckState & {
     }, [state.currentState, handleTimeout, handleDataEvent, navigate]);
 
     const handleComplete = useCallback(async () => {
-        if (refs.isSubmitting || refs.hasNavigated) return;
-    
+        if (refs.isSubmitting) return;
         refs.isSubmitting = true;
-        refs.hasNavigated = true;
-    
+
+        console.log("🚀 Checking state sequence...");
+
         const currentIndex = STATE_SEQUENCE.indexOf(state.currentState);
         if (currentIndex < STATE_SEQUENCE.length - 1) {
             updateState({
                 currentState: STATE_SEQUENCE[currentIndex + 1],
-                stabilityTime: 0,
+                stabilityTime: 0, // ✅ Reset stability time
             });
+
             refs.isSubmitting = false;
-            refs.hasNavigated = false;
             return;
         }
-    
+
         try {
             const faceId = localStorage.getItem("faceId");
-            if (!faceId) {
-                throw new Error("Face ID не найден.");
-            }
-    
+            if (!faceId) throw new Error("❌ Face ID not found");
+
             const finalData = {
                 temperatureData: state.temperatureData,
                 alcoholData: state.alcoholData,
                 faceId,
             };
-    
-            const response = await fetch(`http://localhost:3001/health`, {
+
+            console.log("📡 Sending final data:", finalData);
+
+            const response = await fetch(`http:localhost:3001/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(finalData),
             });
-    
+
             if (!response.ok) {
-                throw new Error(`Сервер ответил со статусом: ${response.status}`);
+                throw new Error(`❌ Server responded with status: ${response.status}`);
             }
-    
+
+            console.log("✅ Submission successful, navigating to complete authentication...");
+
             localStorage.setItem("results", JSON.stringify({
                 temperature: state.temperatureData.temperature,
                 alcohol: state.alcoholData.alcoholLevel,
             }));
-    
-    
+
+            refs.socket?.disconnect();
+
             navigate("/complete-authentication", { state: { success: true } });
-    
-            setTimeout(() => {
-                navigate("/");
-            }, 4000);
-    
-        } catch (error: any) {
+
+        } catch (error) {
             console.error("❌ Submission error:", error);
-            toast.error(`Ошибка отправки данных: ${error.message}`);
+            toast.error("Ошибка отправки данных. Проверьте соединение.");
             refs.isSubmitting = false;
-            refs.hasNavigated = false;
         }
     }, [state, navigate, updateState]);
-    
 
     return {
         ...state,
@@ -264,6 +238,7 @@ export const useHealthCheck = (): HealthCheckState & {
             }),
     };
 };
+
 
 
 // import { useState, useEffect, useCallback, useRef } from "react";
