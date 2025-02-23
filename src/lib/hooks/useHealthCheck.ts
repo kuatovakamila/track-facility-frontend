@@ -7,7 +7,6 @@ import { StateKey } from "../constants";
 const MAX_STABILITY_TIME = 7;
 const SOCKET_TIMEOUT = 15000;
 
-
 // Define sensor data types
 type SensorData = {
     temperature?: string;
@@ -38,21 +37,12 @@ const configureSocketListeners = (
     console.log(`🔄 Setting up WebSocket listeners for state: ${currentState}`);
 
     if (currentState === "TEMPERATURE") {
-        socket.on("temperature", (data) => {
-            console.log("🔥 Temperature event received:", data);
-            handlers.onData(data);
-        });
+        socket.on("temperature", handlers.onData);
     } else if (currentState === "ALCOHOL") {
-        socket.on("alcohol", (data) => {
-            console.log("🍷 Alcohol event received:", data);
-            handlers.onData(data);
-        });
+        socket.on("alcohol", handlers.onData);
     }
 
-    socket.on("camera", (data) => {
-        console.log("📷 Camera event received:", data);
-        handlers.onData(data);
-    });
+    socket.on("camera", handlers.onData);
 };
 
 export const useHealthCheck = (): HealthCheckState & {
@@ -74,8 +64,6 @@ export const useHealthCheck = (): HealthCheckState & {
         lastDataTime: Date.now(),
         hasTimedOut: false,
         isSubmitting: false,
-        hasNavigated: false,
-        pingInterval: null as NodeJS.Timeout | null,
     }).current;
 
     const updateState = useCallback(
@@ -88,17 +76,15 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
-        console.warn("⏳ Timeout reached, but preventing premature navigation");
+        console.warn("⏳ Timeout reached");
+        if (state.currentState === "ALCOHOL") {
+            navigate("/");
+        }
     }, []);
 
     const handleDataEvent = useCallback(
         (data: SensorData) => {
-            if (!data) {
-                console.warn("⚠️ Received empty data packet");
-                return;
-            }
-
-            console.log("📡 Sensor data received:", data);
+            if (!data) return;
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
@@ -112,19 +98,11 @@ export const useHealthCheck = (): HealthCheckState & {
                 const isTemperatureStable = prev.currentState === "TEMPERATURE" && prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
                 const nextState = isTemperatureStable ? "ALCOHOL" : prev.currentState;
 
-                console.log(`🔄 Transitioning to state: ${nextState}`);
-
                 return {
                     ...prev,
                     stabilityTime: isTemperatureStable ? 0 : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
-                    temperatureData:
-                        prev.currentState === "TEMPERATURE"
-                            ? { temperature: Number(data.temperature) || 0 }
-                            : prev.temperatureData,
-                    alcoholData:
-                        prev.currentState === "ALCOHOL"
-                            ? { alcoholLevel: alcoholStatus }
-                            : prev.alcoholData,
+                    temperatureData: prev.currentState === "TEMPERATURE" ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 } : prev.temperatureData,
+                    alcoholData: prev.currentState === "ALCOHOL" ? { alcoholLevel: alcoholStatus } : prev.alcoholData,
                     currentState: nextState,
                 };
             });
@@ -133,26 +111,14 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     useEffect(() => {
-        console.log(`⚙️ useEffect triggered. Current state: ${state.currentState}`);
-
         if (!refs.socket) {
-            console.log("🛠️ Initializing WebSocket connection...");
             refs.socket = io('http://localhost:3001', {
                 transports: ["websocket"],
                 reconnection: true,
                 reconnectionAttempts: Infinity,
                 reconnectionDelay: 1000,
             });
-
-            refs.socket.on("connect", () => {
-                console.log("✅ WebSocket connected.");
-            });
-
-            refs.socket.on("disconnect", (reason) => {
-                console.warn("⚠️ WebSocket disconnected, attempting to reconnect:", reason);
-            });
         }
-
         configureSocketListeners(refs.socket, state.currentState, {
             onData: handleDataEvent,
             onError: handleTimeout,
@@ -163,17 +129,37 @@ export const useHealthCheck = (): HealthCheckState & {
         if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
         refs.isSubmitting = true;
 
-        console.log("🚀 Completing health check...");
-        navigate("/complete-authentication", { replace: true });
-    }, [navigate, state.currentState]);
+        try {
+            refs.socket?.disconnect();
+            const faceId = localStorage.getItem("faceId");
+            if (!faceId) throw new Error("Face ID not found");
+
+            const response = await fetch(`http://localhost:3001/health`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    temperatureData: state.temperatureData,
+                    alcoholData: state.alcoholData,
+                    faceId,
+                }),
+            });
+
+            if (!response.ok) throw new Error("Request failed");
+
+            navigate("/complete-authentication", { replace: true });
+        } catch (error) {
+            console.error("Submission error:", error);
+            refs.isSubmitting = false;
+        }
+    }, [state, navigate, refs]);
 
     return {
         ...state,
         handleComplete,
-        setCurrentState: (newState) =>
-            updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
+        setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
     };
 };
+
 // import { useState, useEffect, useCallback, useRef } from "react";
 // import { useNavigate } from "react-router-dom";
 // import { io, type Socket } from "socket.io-client";
