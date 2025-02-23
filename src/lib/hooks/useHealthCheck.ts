@@ -126,7 +126,13 @@ export const useHealthCheck = (): HealthCheckState & {
 
             let alcoholStatus = "Не определено";
             if (data.alcoholLevel) {
-                alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
+                alcoholStatus = data.alcoholLevel
+                if (alcoholStatus==="normal") {
+                    alcoholStatus='Трезвый'
+                }
+                else if (alcoholStatus==='abnormal') {
+ alcoholStatus='Пьяный'
+                }
             }
 
             setState((prev) => {
@@ -159,35 +165,45 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     useEffect(() => {
-        if (refs.socket) return;
-        refs.hasTimedOut = false;
-
-        const socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001', {
-            transports: ["websocket"],
-            reconnection: true,
-            reconnectionAttempts: 20,
-            reconnectionDelay: 10000,
-        });
-
-        socket.on("connect", () => {
-            console.log("✅ WebSocket connected successfully.");
+        if (!refs.socket) {
+            const socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001', {
+                transports: ["websocket"],
+                reconnection: true,
+                reconnectionAttempts: 20,
+                reconnectionDelay: 10000,
+            });
+    
+            socket.on("connect", () => {
+                console.log("✅ WebSocket connected successfully.");
+                refs.socket = socket;
+            });
+    
+            socket.on("disconnect", (reason) => {
+                console.warn("⚠️ WebSocket disconnected:", reason);
+            });
+    
             refs.socket = socket;
-        });
-
-        socket.on("disconnect", (reason) => {
-            console.warn("⚠️ WebSocket disconnected:", reason);
-        });
-
-        configureSocketListeners(socket, state.currentState, {
+        }
+    
+        // ✅ Always reconfigure listeners when currentState changes
+        configureSocketListeners(refs.socket, state.currentState, {
             onData: handleDataEvent,
             onError: handleTimeout,
         });
-
+    
         return () => {
-            socket.disconnect();
-            refs.socket = null;
+            if (refs.socket) {
+                refs.socket.off("connect_error");
+                refs.socket.off("error");
+                refs.socket.off("temperature");
+                refs.socket.off("alcohol");
+                refs.socket.off("camera");
+                refs.socket.disconnect();
+                refs.socket = null;
+            }
         };
     }, [state.currentState, handleTimeout, handleDataEvent, navigate]);
+    
 
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
