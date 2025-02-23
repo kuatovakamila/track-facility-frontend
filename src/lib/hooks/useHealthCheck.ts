@@ -51,7 +51,6 @@ export const useHealthCheck = (): HealthCheckState & {
         },
         []
     );
-
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
@@ -59,19 +58,33 @@ export const useHealthCheck = (): HealthCheckState & {
         console.warn("⏳ Timeout reached, showing error and navigating home...");
     
         if (state.currentState === "ALCOHOL") {
+            console.log("🚨 Showing toast error: Вы неправильно подули, повторите попытку.");
             toast.error("Вы неправильно подули, повторите попытку.", {
-                style: {
-                    background: "#ff4d4d", // Red background
-                    color: "#fff",
-                    borderRadius: "8px",
-                },
+                position: "top-right",
+                autoClose: 4000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+                progress: undefined,
             });
-        } else {
-            toast.error("Ошибка измерения. Пожалуйста, попробуйте снова.");
-        }
     
-        navigate("/", { replace: true });
+            // 🔥 Delay navigation by 1 second to allow toast to appear
+            setTimeout(() => {
+                navigate("/", { replace: true });
+            }, 1000);
+        } else {
+            toast.error("Ошибка измерения. Пожалуйста, попробуйте снова.", {
+                position: "top-right",
+                autoClose: 4000,
+            });
+    
+            setTimeout(() => {
+                navigate("/", { replace: true });
+            }, 1000);
+        }
     }, [navigate, state.currentState]);
+    
     
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
