@@ -63,18 +63,18 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
         refs.isSubmitting = true;
-
+    
         try {
             console.log("🔌 Disconnecting all WebSockets before authentication...");
             refs.socket?.off("temperature");
             refs.socket?.off("alcohol");
             refs.socket?.disconnect();
-
+    
             const faceId = localStorage.getItem("faceId");
             if (!faceId) throw new Error("Face ID not found");
-
+    
             console.log("🚀 Submitting health check data...");
-            const response = await fetch(`http://localhost:3001/health`, {
+            const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -83,38 +83,51 @@ export const useHealthCheck = (): HealthCheckState & {
                     faceId,
                 }),
             });
-
+    
             if (!response.ok) throw new Error("Request failed");
-
+    
+            console.log("✅ Authentication complete, navigating to authentication screen...");
+            
+            // ✅ Prevent state updates after authentication completes
+            refs.finalAlcoholLevel = "COMPLETED"; 
+    
             navigate("/complete-authentication", { replace: true });
+    
         } catch (error) {
             console.error("❌ Submission error:", error);
             refs.isSubmitting = false;
         }
     }, [state, navigate]);
+    
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             console.log("📡 Received sensor data:", JSON.stringify(data));
-
+    
             if (!data || (!data.temperature && !data.alcoholLevel)) {
                 console.warn("⚠️ No valid sensor data received");
                 return;
             }
-
+    
+            // ✅ Stop updates if authentication is already completed
+            if (refs.finalAlcoholLevel === "COMPLETED") {
+                console.warn("🚫 Ignoring updates after authentication is complete.");
+                return;
+            }
+    
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
-            refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT); // Reset timeout every time data is received
-
+            refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT); // ⏳ Reset timeout to 15s
+    
             let alcoholStatus = refs.finalAlcoholLevel || state.alcoholData.alcoholLevel;
             if (data.alcoholLevel !== undefined && data.alcoholLevel !== null) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
-                refs.finalAlcoholLevel = alcoholStatus; // Store the final alcohol level and never overwrite
+                refs.finalAlcoholLevel = alcoholStatus; // Store final alcohol state
             }
-
+    
             setState((prev) => {
                 let nextState = prev.currentState;
                 let nextStabilityTime = prev.stabilityTime + 1;
-
+    
                 if (prev.currentState === "TEMPERATURE") {
                     if (nextStabilityTime >= MAX_STABILITY_TIME) {
                         nextState = "ALCOHOL";
@@ -123,18 +136,19 @@ export const useHealthCheck = (): HealthCheckState & {
                         refs.socket?.off("temperature");
                     }
                 }
-
+    
                 if (prev.currentState === "ALCOHOL") {
                     if (refs.finalAlcoholLevel !== "") {
                         nextStabilityTime = prev.stabilityTime + 1; // Start progress when final alcohol state is received
                     }
-
+    
                     if (nextStabilityTime >= MAX_STABILITY_TIME) {
                         console.log("✅ Alcohol measurement complete, navigating to authentication...");
                         handleComplete();
+                        return prev; // ✅ Stop state updates after authentication
                     }
                 }
-
+    
                 return {
                     ...prev,
                     stabilityTime: nextStabilityTime,
@@ -150,6 +164,7 @@ export const useHealthCheck = (): HealthCheckState & {
         },
         [handleComplete]
     );
+    
 
     useEffect(() => {
         if (!refs.socket) {
