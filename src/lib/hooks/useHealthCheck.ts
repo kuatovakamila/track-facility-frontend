@@ -125,30 +125,34 @@ export const useHealthCheck = (): HealthCheckState & {
     
             if (!data || (!data.temperature && !data.alcoholLevel)) {
                 console.warn("⚠️ No valid sensor data received");
+    
+                // ✅ If we are in ALCOHOL state and no valid data is received, trigger timeout
+                if (state.currentState === "ALCOHOL") {
+                    handleTimeout();
+                }
                 return;
             }
     
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
-            refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT); // ⏳ Reset timeout to 15s
+            refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT); // Reset timeout
     
             let alcoholStatus = refs.finalAlcoholLevel || state.alcoholData.alcoholLevel;
-            
+    
             if (data.alcoholLevel !== undefined && data.alcoholLevel !== null) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
                 refs.finalAlcoholLevel = alcoholStatus; // Store final alcohol state
     
                 console.log(`✅ Alcohol detected as "${alcoholStatus}", FORCE NAVIGATING to authentication...`);
-                
-                // 🔥 Instantly set progress to 100% and navigate
+    
                 setState((prev) => ({
                     ...prev,
-                    stabilityTime: MAX_STABILITY_TIME,  // ✅ Force full progress
+                    stabilityTime: MAX_STABILITY_TIME,
                     alcoholData: { alcoholLevel: alcoholStatus },
                 }));
     
-                handleComplete(); // 🔥 Navigate immediately
-                return; // ✅ Prevent further execution
+                handleComplete();
+                return;
             }
     
             setState((prev) => {
@@ -166,7 +170,7 @@ export const useHealthCheck = (): HealthCheckState & {
     
                 return {
                     ...prev,
-                    stabilityTime: nextStabilityTime,  // ✅ Normal progress for temperature
+                    stabilityTime: nextStabilityTime,
                     temperatureData: prev.currentState === "TEMPERATURE"
                         ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 }
                         : prev.temperatureData,
