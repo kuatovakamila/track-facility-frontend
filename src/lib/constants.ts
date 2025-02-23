@@ -27,8 +27,6 @@ export const STATES = {
 		value: "Загрузка...",
 		unit: "MG",
 	},
-	
-	
 } as const;
 
 export type StateKey = keyof typeof STATES;
