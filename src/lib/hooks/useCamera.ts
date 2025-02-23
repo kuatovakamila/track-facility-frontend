@@ -34,7 +34,7 @@ export const useCamera = ({ onFrame }: UseCameraProps) => {
 	const setupRaspberryPiCamera = async () => {
 		try {
 			setLoading(true);
-			const socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost:3001");
+			const socket = io( "http://localhost:3001");
 			socketRef.current = socket;
 			setIsRaspberryPi(true);
 
@@ -100,7 +100,7 @@ export const useCamera = ({ onFrame }: UseCameraProps) => {
 		let mounted = true;
 
 		// Try connecting to Raspberry Pi camera first
-		fetch(import.meta.env.VITE_SERVER_URL || "http://localhost:3001")
+		fetch("http://localhost:3001")
 			.then(() => {
 				if (mounted) setupRaspberryPiCamera();
 			})
