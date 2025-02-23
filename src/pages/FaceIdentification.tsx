@@ -7,7 +7,7 @@ import { useCamera } from "../lib/hooks/useCamera";
 import toast from "react-hot-toast";
 import { faceRecognitionService } from "../lib/services/faceRecognitionService";
 import { ERROR_MESSAGES } from "../lib/constants";
-import { FaRegSmileBeam, FaRegTimesCircle, FaFingerprint } from "react-icons/fa"; // ✅ Иконки Face ID
+import { FaRegSmileBeam, FaRegTimesCircle, FaFingerprint } from "react-icons/fa"; // Icons
 
 export default function FaceIdentification() {
     const [isProcessing, setIsProcessing] = useState(false);
@@ -15,19 +15,19 @@ export default function FaceIdentification() {
     const [consecutiveErrors, setConsecutiveErrors] = useState(0);
     const navigate = useNavigate();
 
-    /** 📌 Обработка ошибок */
+    /** 📌 Handle Errors */
     const handleError = useCallback(
         (errorMessage: string) => {
             setError(errorMessage);
             setConsecutiveErrors((prev) => {
                 const newCount = prev + 1;
                 if (newCount >= 3) {
-                    toast.error(`Ошибка: ${errorMessage}`, {
+                    toast.error(`Error: ${errorMessage}`, {
                         duration: 3000,
                         style: { background: "#272727", color: "#fff", borderRadius: "8px" },
                     });
 
-                    setTimeout(() => navigate("/"), 1500); // ⏳ Задержка перед выходом
+                    setTimeout(() => navigate("/"), 1500); // Delay before exit
                 }
                 return newCount;
             });
@@ -35,7 +35,7 @@ export default function FaceIdentification() {
         [navigate]
     );
 
-    /** 📌 Обработка видеопотока */
+    /** 📌 Process Camera Frames */
     const handleFrame = useCallback(
         async (imageData: string) => {
             if (isProcessing) return;
@@ -63,25 +63,25 @@ export default function FaceIdentification() {
         [isProcessing, navigate, handleError]
     );
 
-    /** 📌 Подключение камеры */
+    /** 📌 Initialize Camera Hook */
     const { videoRef, canvasRef, error: cameraError, loading } = useCamera({
         onFrame: handleFrame,
     });
 
-    /** 📌 Сброс ошибок при монтировании */
+    /** 📌 Reset errors on mount */
     useEffect(() => {
         setError(null);
         setConsecutiveErrors(0);
     }, []);
 
-    /** 📌 Динамические сообщения */
+    /** 📌 Dynamic Messages */
     const errorMessage = loading
-        ? "📷 Подключаемся к камере..."
+        ? "📷 Connecting to camera..."
         : isProcessing
-        ? "🔍 Проверка..."
-        : cameraError || error || "📸 Сканируйте своё лицо для подтверждения";
+        ? "🔍 Verifying..."
+        : cameraError || error || "📸 Scan your face to continue";
 
-    /** 📌 Выбор иконки в зависимости от состояния */
+    /** 📌 Dynamic Face ID Icon */
     const renderStatusIcon = () => {
         if (loading) return <FaFingerprint className="text-blue-400 text-6xl animate-pulse" />;
         if (isProcessing) return <FaFingerprint className="text-yellow-400 text-6xl animate-spin" />;
@@ -90,51 +90,60 @@ export default function FaceIdentification() {
     };
 
     return (
-        <div className="min-h-screen bg-black text-white flex flex-col">
+        <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 relative">
             <Header />
 
-            <div className="flex-1 flex flex-col items-center justify-center p-6">
-                <motion.h1
-                    className="text-2xl font-medium mb-2"
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                >
-                    🏆 Распознавание лица
-                </motion.h1>
+            {/* ✅ Face ID Glow Effect */}
+            <motion.div
+                className="absolute inset-0 flex items-center justify-center"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 1 }}
+            >
+                <div className="absolute w-[250px] h-[250px] border-4 border-green-500/50 rounded-2xl shadow-[0_0_30px_rgba(34,197,94,0.5)] animate-pulse" />
+            </motion.div>
 
-                {/* ✅ Анимация Face ID */}
-                <motion.div
-                    className="mb-4"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.2 }}
-                >
-                    {renderStatusIcon()}
-                </motion.div>
+            <motion.h1
+                className="text-3xl font-medium mb-4 relative z-10"
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+            >
+                🏆 Face Identification
+            </motion.h1>
 
+            {/* ✅ Animated Face ID Icon */}
+            <motion.div
+                className="mb-4 relative z-10"
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.5, repeat: Infinity, repeatType: "reverse" }}
+            >
+                {renderStatusIcon()}
+            </motion.div>
+
+            {/* ✅ Status Message */}
+            <motion.p
+                className={`text-center text-gray-400 mb-8 text-lg ${isProcessing ? "text-yellow-400" : ""}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.2 }}
+            >
+                {errorMessage}
+            </motion.p>
+
+            {/* ❗️ Warning for multiple errors */}
+            {consecutiveErrors >= 2 && (
                 <motion.p
-                    className={`text-center text-gray-400 mb-8 ${isProcessing ? "text-yellow-400" : ""}`}
+                    className="text-center text-red-500 mb-6 text-md"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.2 }}
                 >
-                    {errorMessage}
+                    ⚠️ Multiple errors detected. Try changing your lighting or position.
                 </motion.p>
+            )}
 
-                {/* ❗️ Показывать предупреждение при повторных ошибках */}
-                {consecutiveErrors >= 2 && (
-                    <motion.p
-                        className="text-center text-red-500 mb-6"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.2 }}
-                    >
-                        ⚠️ Несколько ошибок подряд. Попробуйте изменить освещение или положение лица.
-                    </motion.p>
-                )}
-
-                <VideoDisplay videoRef={videoRef} canvasRef={canvasRef} isProcessing={isProcessing} />
-            </div>
+            <VideoDisplay videoRef={videoRef} canvasRef={canvasRef} isProcessing={isProcessing} />
         </div>
     );
 }
