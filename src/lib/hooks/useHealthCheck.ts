@@ -73,7 +73,7 @@ export const useHealthCheck = (): HealthCheckState & {
     
     
     const handleComplete = useCallback(async () => {
-        if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
+        if (refs.isSubmitting || refs.hasTimedOut || state.currentState !== "ALCOHOL") return; // 🛑 Prevent submission after timeout
         refs.isSubmitting = true;
     
         try {
@@ -118,14 +118,19 @@ export const useHealthCheck = (): HealthCheckState & {
     }, [state, navigate]);
     
     
+    
     const handleDataEvent = useCallback(
         (data: SensorData) => {
+            if (refs.hasTimedOut) {
+                console.warn("🚫 Ignoring data event because timeout was triggered");
+                return;
+            }
+    
             console.log("📡 Received sensor data:", JSON.stringify(data));
     
             if (!data || (!data.temperature && !data.alcoholLevel)) {
                 console.warn("⚠️ No valid sensor data received");
     
-                // ✅ If we are in ALCOHOL state and no valid data is received, trigger timeout
                 if (state.currentState === "ALCOHOL") {
                     handleTimeout();
                 }
@@ -150,7 +155,7 @@ export const useHealthCheck = (): HealthCheckState & {
                     alcoholData: { alcoholLevel: alcoholStatus },
                 }));
     
-                handleComplete();
+                handleComplete(); // 🚀 Navigate to final results if valid data is received
                 return;
             }
     
