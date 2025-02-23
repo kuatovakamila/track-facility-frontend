@@ -93,7 +93,7 @@ export const useHealthCheck = (): HealthCheckState & {
             navigate("/final-results", {
                 state: {
                     temperature: state.temperatureData.temperature,
-                    alcoholLevel:state.alcoholData,
+                    alcoholLevel: state.alcoholData.alcoholLevel,
                 },
                 replace: true,
             });
