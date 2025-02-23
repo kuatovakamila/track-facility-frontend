@@ -74,7 +74,7 @@ export const useHealthCheck = (): HealthCheckState & {
             if (!faceId) throw new Error("Face ID not found");
     
             console.log("🚀 Submitting health check data...");
-            const response = await fetch(`http://localhost:3001/health`, {
+            const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -88,8 +88,7 @@ export const useHealthCheck = (): HealthCheckState & {
     
             console.log("✅ Authentication complete, navigating to authentication screen...");
             
-            // ✅ Prevent state updates after authentication completes
-            refs.finalAlcoholLevel = "COMPLETED"; 
+            refs.finalAlcoholLevel = "COMPLETED"; // ✅ Mark process as completed
     
             navigate("/complete-authentication", { replace: true });
     
@@ -122,6 +121,11 @@ export const useHealthCheck = (): HealthCheckState & {
             if (data.alcoholLevel !== undefined && data.alcoholLevel !== null) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
                 refs.finalAlcoholLevel = alcoholStatus; // Store final alcohol state
+    
+                // ✅ Immediately navigate when alcohol status is detected
+                console.log(`✅ Alcohol detected as "${alcoholStatus}", navigating to authentication...`);
+                handleComplete();
+                return; // Prevent further state updates
             }
     
             setState((prev) => {
@@ -134,18 +138,6 @@ export const useHealthCheck = (): HealthCheckState & {
                         nextStabilityTime = 0;
                         console.log("🔌 Switching to ALCOHOL state, disconnecting temperature WebSocket...");
                         refs.socket?.off("temperature");
-                    }
-                }
-    
-                if (prev.currentState === "ALCOHOL") {
-                    if (refs.finalAlcoholLevel !== "") {
-                        nextStabilityTime = prev.stabilityTime + 1; // Start progress when final alcohol state is received
-                    }
-    
-                    if (nextStabilityTime >= MAX_STABILITY_TIME) {
-                        console.log("✅ Alcohol measurement complete, navigating to authentication...");
-                        handleComplete();
-                        return prev; // ✅ Stop state updates after authentication
                     }
                 }
     
