@@ -165,45 +165,35 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     useEffect(() => {
-        if (!refs.socket) {
-            const socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001', {
-                transports: ["websocket"],
-                reconnection: true,
-                reconnectionAttempts: 20,
-                reconnectionDelay: 10000,
-            });
-    
-            socket.on("connect", () => {
-                console.log("✅ WebSocket connected successfully.");
-                refs.socket = socket;
-            });
-    
-            socket.on("disconnect", (reason) => {
-                console.warn("⚠️ WebSocket disconnected:", reason);
-            });
-    
+        if (refs.socket) return;
+        refs.hasTimedOut = false;
+
+        const socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001', {
+            transports: ["websocket"],
+            reconnection: true,
+            reconnectionAttempts: 20,
+            reconnectionDelay: 10000,
+        });
+
+        socket.on("connect", () => {
+            console.log("✅ WebSocket connected successfully.");
             refs.socket = socket;
-        }
-    
-        // ✅ Always reconfigure listeners when currentState changes
-        configureSocketListeners(refs.socket, state.currentState, {
+        });
+
+        socket.on("disconnect", (reason) => {
+            console.warn("⚠️ WebSocket disconnected:", reason);
+        });
+
+        configureSocketListeners(socket, state.currentState, {
             onData: handleDataEvent,
             onError: handleTimeout,
         });
-    
+
         return () => {
-            if (refs.socket) {
-                refs.socket.off("connect_error");
-                refs.socket.off("error");
-                refs.socket.off("temperature");
-                refs.socket.off("alcohol");
-                refs.socket.off("camera");
-                refs.socket.disconnect();
-                refs.socket = null;
-            }
+            socket.disconnect();
+            refs.socket = null;
         };
     }, [state.currentState, handleTimeout, handleDataEvent, navigate]);
-    
 
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting) return;
