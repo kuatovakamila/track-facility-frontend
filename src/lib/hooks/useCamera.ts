@@ -5,76 +5,18 @@ interface UseCameraProps {
 	onFrame: (imageData: string) => Promise<void>;
 }
 
-export const useRaspberryCamera = ({ onFrame }: UseCameraProps) => {
+export const useCamera = ({ onFrame }: UseCameraProps) => {
 	const videoRef = useRef<HTMLVideoElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const socketRef = useRef<Socket | null>(null);
-	const [error, setError] = useState<string | null>(null);
-	const [lastFrame, setLastFrame] = useState<string | null>(null);
-
-	useEffect(() => {
-		let mounted = true;
-
-		async function setupCamera() {
-			try {
-				const socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001');
-				socketRef.current = socket;
-
-				socket.on("connect", () => {
-					console.log("Connected to camera socket");
-					socket.emit("start-camera");
-				});
-
-				socket.on("camera-frame", async (data) => {
-					if (!mounted) return;
-
-					if (data.success) {
-						setLastFrame(data.image);
-						await onFrame(data.image);
-					}
-				});
-
-				socket.on("camera-error", (errorMessage) => {
-					if (!mounted) return;
-					console.error("Camera error:", errorMessage);
-					setError(errorMessage);
-				});
-
-				socket.on("disconnect", () => {
-					console.log("Disconnected from camera socket");
-				});
-			} catch (err) {
-				console.error("Error setting up camera:", err);
-				setError("Failed to connect to camera");
-			}
-		}
-
-		setupCamera();
-
-		return () => {
-			mounted = false;
-			if (socketRef.current) {
-				socketRef.current.emit("stop-camera");
-				socketRef.current.disconnect();
-			}
-		};
-	}, [onFrame]);
-
-	return {
-		videoRef,
-		canvasRef,
-		error,
-		isRpiCamera: true,
-		lastFrame,
-	};
-};
-
-export const useDeviceCamera = ({ onFrame }: UseCameraProps) => {
-	const videoRef = useRef<HTMLVideoElement | null>(null);
-	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const intervalRef = useRef<number | null>(null);
-	const [error, setError] = useState<string | null>(null);
 
+	const [error, setError] = useState<string | null>(null);
+	const [loading, setLoading] = useState(true);
+	const [lastFrame, setLastFrame] = useState<string | null>(null);
+	const [isRaspberryPi, setIsRaspberryPi] = useState(false);
+
+	// 📌 Function to Capture Frame from a Device Camera
 	const captureFrame = useCallback(async () => {
 		if (!canvasRef.current || !videoRef.current) return;
 		const canvas = canvasRef.current;
@@ -88,66 +30,102 @@ export const useDeviceCamera = ({ onFrame }: UseCameraProps) => {
 		await onFrame(imageData);
 	}, [onFrame]);
 
+	// 📌 Setup Raspberry Pi Camera
+	const setupRaspberryPiCamera = async () => {
+		try {
+			setLoading(true);
+			const socket = io(import.meta.env.VITE_SERVER_URL || "http://localhost:3001");
+			socketRef.current = socket;
+			setIsRaspberryPi(true);
+
+			socket.on("connect", () => {
+				console.log("Connected to Raspberry Pi camera");
+				socket.emit("start-camera");
+			});
+
+			socket.on("camera-frame", async (data) => {
+				if (data.success) {
+					setLastFrame(data.image);
+					setLoading(false);
+					await onFrame(data.image);
+				}
+			});
+
+			socket.on("camera-error", (errorMessage) => {
+				console.error("Camera error:", errorMessage);
+				setError(errorMessage);
+				setLoading(false);
+			});
+
+			socket.on("disconnect", () => {
+				console.log("Disconnected from Raspberry Pi camera");
+			});
+		} catch (err) {
+			console.error("Error setting up Raspberry Pi camera:", err);
+			setError("Failed to connect to Raspberry Pi camera");
+			setLoading(false);
+		}
+	};
+
+	// 📌 Setup Device Camera
+	const setupDeviceCamera = async () => {
+		try {
+			setLoading(true);
+			const stream = await navigator.mediaDevices.getUserMedia({
+				video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+			});
+
+			if (videoRef.current) {
+				videoRef.current.srcObject = stream;
+				await new Promise((resolve) => {
+					if (videoRef.current) {
+						videoRef.current.onloadedmetadata = resolve;
+					}
+				});
+				await videoRef.current.play();
+			}
+
+			// Start capturing frames
+			intervalRef.current = window.setInterval(captureFrame, 1000);
+			setLoading(false);
+		} catch (err) {
+			setError("Ошибка доступа к камере. Проверьте разрешения.");
+			setLoading(false);
+			console.error("Error accessing device camera:", err);
+		}
+	};
+
+	// 📌 Automatically Detect and Setup the Correct Camera
 	useEffect(() => {
 		let mounted = true;
-		const currentVideo = videoRef.current; // Store ref value
 
-		async function setupCamera() {
-			try {
-				const stream = await navigator.mediaDevices.getUserMedia({
-					video: {
-						facingMode: "user",
-						width: { ideal: 640 },
-						height: { ideal: 480 },
-					},
-				});
-
-				if (videoRef.current && mounted) {
-					videoRef.current.srcObject = stream;
-					// Wait for video to be ready
-					await new Promise((resolve) => {
-						if (videoRef.current) {
-							videoRef.current.onloadedmetadata = resolve;
-						}
-					});
-					await videoRef.current.play();
-				}
-
-				if (mounted) {
-					// Start capturing frames after video is playing
-					intervalRef.current = window.setInterval(
-						captureFrame,
-						1000,
-					);
-				}
-			} catch (err) {
-				if (mounted) {
-					setError(
-						"Ошибка доступа к камере. Пожалуйста, проверьте разрешения.",
-					);
-					console.error("Error accessing camera:", err);
-				}
-			}
-		}
-
-		setupCamera();
+		// Try connecting to Raspberry Pi camera first
+		fetch(import.meta.env.VITE_SERVER_URL || "http://localhost:3001")
+			.then(() => {
+				if (mounted) setupRaspberryPiCamera();
+			})
+			.catch(() => {
+				// If the server is unavailable, use the device camera
+				if (mounted) setupDeviceCamera();
+			});
 
 		return () => {
 			mounted = false;
-			if (intervalRef.current) {
-				clearInterval(intervalRef.current);
+
+			// Cleanup Raspberry Pi camera connection
+			if (socketRef.current) {
+				socketRef.current.emit("stop-camera");
+				socketRef.current.disconnect();
 			}
-			if (currentVideo?.srcObject) {
-				// Use stored ref
-				const videoStream = currentVideo.srcObject as MediaStream;
+
+			// Cleanup Device Camera
+			if (intervalRef.current) clearInterval(intervalRef.current);
+			if (videoRef.current?.srcObject) {
+				const videoStream = videoRef.current.srcObject as MediaStream;
 				videoStream.getTracks().forEach((track) => track.stop());
 			}
 		};
 	}, [captureFrame]);
 
-	return {
-		videoRef,
-		canvasRef,
-		error,
-	};
+	return { videoRef, canvasRef, error, loading, lastFrame, isRaspberryPi };
 };
