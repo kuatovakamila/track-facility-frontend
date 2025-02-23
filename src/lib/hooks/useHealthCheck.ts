@@ -87,9 +87,9 @@ export const useHealthCheck = (): HealthCheckState & {
     
     const handleDataEvent = useCallback(
         (data: SensorData) => {
-            console.log("📡 Received sensor data:", data);
+            console.log("📡 Received sensor data:", JSON.stringify(data));
     
-            if (!data || (!data.temperature && !data.alcoholLevel && !data.cameraStatus)) {
+            if (!data || (!data.temperature && !data.alcoholLevel)) {
                 console.warn("⚠️ No valid sensor data received");
                 return;
             }
@@ -108,28 +108,30 @@ export const useHealthCheck = (): HealthCheckState & {
                     prev.currentState === "TEMPERATURE" &&
                     prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
     
-                if (isTemperatureStable) {
-                    console.log("🔄 Transitioning to ALCOHOL state...");
+                const nextState = isTemperatureStable ? "ALCOHOL" : prev.currentState;
+    
+                // ✅ Disconnect temperature WebSocket when transitioning to ALCOHOL
+                if (isTemperatureStable && refs.socket) {
+                    console.log("🔌 Disconnecting temperature WebSocket...");
+                    refs.socket.off("temperature");
                 }
     
                 return {
                     ...prev,
-                    stabilityTime: isTemperatureStable ? 0 : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
+                    stabilityTime: isTemperatureStable ? 0 : prev.stabilityTime + 1,
                     temperatureData: prev.currentState === "TEMPERATURE"
                         ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 }
                         : prev.temperatureData,
                     alcoholData: prev.currentState === "ALCOHOL"
                         ? { alcoholLevel: alcoholStatus }
                         : prev.alcoholData,
-                    currentState: isTemperatureStable ? "ALCOHOL" : prev.currentState,
+                    currentState: nextState,
                 };
             });
         },
-        [handleTimeout]
+        []
     );
     
-    
-
     useEffect(() => {
         if (!refs.socket) {
             refs.socket = io('http://localhost:3001', {
@@ -148,13 +150,18 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
         refs.isSubmitting = true;
-
+    
         try {
+            console.log("🔌 Disconnecting all WebSockets before authentication...");
+            refs.socket?.off("temperature");
+            refs.socket?.off("alcohol");
             refs.socket?.disconnect();
+    
             const faceId = localStorage.getItem("faceId");
             if (!faceId) throw new Error("Face ID not found");
-
-            const response = await fetch(`http://localhost:3001/health`, {
+    
+            console.log("🚀 Submitting health check data...");
+            const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -163,16 +170,16 @@ export const useHealthCheck = (): HealthCheckState & {
                     faceId,
                 }),
             });
-
+    
             if (!response.ok) throw new Error("Request failed");
-
+    
             navigate("/complete-authentication", { replace: true });
         } catch (error) {
-            console.error("Submission error:", error);
+            console.error("❌ Submission error:", error);
             refs.isSubmitting = false;
         }
     }, [state, navigate, refs]);
-
+    
     return {
         ...state,
         handleComplete,
