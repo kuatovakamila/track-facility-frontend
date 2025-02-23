@@ -76,14 +76,20 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
-        console.warn("⏳ Timeout reached, checking retry mechanism...");
+        console.warn("⏳ Timeout reached, retrying alcohol measurement...");
     
-        if (state.currentState === "ALCOHOL") {
-            // ✅ Instead of navigating away, retry fetching alcohol data
-            refs.hasTimedOut = false; // Reset timeout flag
-            refs.socket?.emit("request-alcohol-data"); // Ask server to resend data
-        }
-    }, [state.currentState]);
+        setState((prev) => {
+            if (prev.currentState === "ALCOHOL") {
+                console.warn("⚠️ Alcohol sensor timeout, waiting for new data...");
+                return { ...prev, stabilityTime: 0 }; // Reset progress to retry
+            }
+            return prev; // No reset needed if in another state
+        });
+    
+        // Reset timeout flag so we keep listening
+        refs.hasTimedOut = false;
+    }, []);
+    
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || state.currentState !== "ALCOHOL") return;
         refs.isSubmitting = true;
@@ -128,7 +134,7 @@ export const useHealthCheck = (): HealthCheckState & {
     
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
-            refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+            refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT); // Reset timeout every time data is received
     
             let alcoholStatus = state.alcoholData.alcoholLevel;
             if (data.alcoholLevel !== undefined && data.alcoholLevel !== null) {
@@ -136,11 +142,6 @@ export const useHealthCheck = (): HealthCheckState & {
             }
     
             setState((prev) => {
-                if (prev.currentState === "ALCOHOL" && prev.stabilityTime >= MAX_STABILITY_TIME) {
-                    console.log("✅ Alcohol measurement complete, navigating to authentication...");
-                    return prev; // Stop unnecessary re-renders
-                }
-    
                 let nextState = prev.currentState;
                 let nextStabilityTime = prev.stabilityTime + 1;
     
@@ -155,12 +156,12 @@ export const useHealthCheck = (): HealthCheckState & {
     
                 if (prev.currentState === "ALCOHOL") {
                     if (prev.alcoholData.alcoholLevel === "Не определено" && alcoholStatus !== "Не определено") {
-                        nextStabilityTime = 0;
+                        nextStabilityTime = 0; // Reset stability time when valid data arrives
                     }
     
                     if (nextStabilityTime >= MAX_STABILITY_TIME) {
                         console.log("✅ Alcohol measurement complete, navigating to authentication...");
-                        handleComplete(); // Navigate only once
+                        handleComplete();
                     }
                 }
     
@@ -179,6 +180,7 @@ export const useHealthCheck = (): HealthCheckState & {
         },
         [handleComplete]
     );
+    
     
     
     useEffect(() => {
