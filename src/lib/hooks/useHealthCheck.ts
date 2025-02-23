@@ -76,39 +76,59 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
         refs.hasTimedOut = true;
-        console.warn("⏳ Timeout reached");
+        console.warn("⏳ Timeout reached, checking retry mechanism...");
+    
         if (state.currentState === "ALCOHOL") {
-            navigate("/");
+            // ✅ Instead of navigating away, retry fetching alcohol data
+            refs.hasTimedOut = false; // Reset timeout flag
+            refs.socket?.emit("request-alcohol-data"); // Ask server to resend data
         }
-    }, []);
-
+    }, [state.currentState]);
+    
     const handleDataEvent = useCallback(
         (data: SensorData) => {
-            if (!data) return;
+            console.log("📡 Received sensor data:", data);
+    
+            if (!data || (!data.temperature && !data.alcoholLevel && !data.cameraStatus)) {
+                console.warn("⚠️ No valid sensor data received");
+                return;
+            }
+    
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
-
+    
             let alcoholStatus = "Не определено";
-            if (data.alcoholLevel !== undefined) {
+            if (data.alcoholLevel !== undefined && data.alcoholLevel !== null) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
             }
-
+    
             setState((prev) => {
-                const isTemperatureStable = prev.currentState === "TEMPERATURE" && prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
-                const nextState = isTemperatureStable ? "ALCOHOL" : prev.currentState;
-
+                const isTemperatureStable =
+                    prev.currentState === "TEMPERATURE" &&
+                    prev.stabilityTime + 1 >= MAX_STABILITY_TIME;
+    
+                const nextState =
+                    isTemperatureStable && data.alcoholLevel !== undefined // ✅ Only switch if alcohol level exists
+                        ? "ALCOHOL"
+                        : prev.currentState;
+    
                 return {
                     ...prev,
                     stabilityTime: isTemperatureStable ? 0 : Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME),
-                    temperatureData: prev.currentState === "TEMPERATURE" ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 } : prev.temperatureData,
-                    alcoholData: prev.currentState === "ALCOHOL" ? { alcoholLevel: alcoholStatus } : prev.alcoholData,
+                    temperatureData: prev.currentState === "TEMPERATURE"
+                        ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 }
+                        : prev.temperatureData,
+                    alcoholData: prev.currentState === "ALCOHOL"
+                        ? { alcoholLevel: alcoholStatus }
+                        : prev.alcoholData,
                     currentState: nextState,
                 };
             });
         },
         [handleTimeout]
     );
+    
 
     useEffect(() => {
         if (!refs.socket) {
