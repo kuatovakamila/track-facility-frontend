@@ -98,7 +98,7 @@ export const useHealthCheck = (): HealthCheckState & {
             if (!faceId) throw new Error("Face ID not found");
     
             console.log("🚀 Submitting health check data...");
-            const response = await fetch(`http://localhost:3001/health`, {
+            const response = await fetch(`${import.meta.env.VITE_SERVER_URL}/health`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -115,7 +115,8 @@ export const useHealthCheck = (): HealthCheckState & {
             console.error("❌ Submission error:", error);
             refs.isSubmitting = false;
         }
-    }, [state, navigate, refs]);
+    }, [state, navigate]);
+    
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             console.log("📡 Received sensor data:", JSON.stringify(data));
@@ -135,24 +136,31 @@ export const useHealthCheck = (): HealthCheckState & {
             }
     
             setState((prev) => {
+                if (prev.currentState === "ALCOHOL" && prev.stabilityTime >= MAX_STABILITY_TIME) {
+                    console.log("✅ Alcohol measurement complete, navigating to authentication...");
+                    return prev; // Stop unnecessary re-renders
+                }
+    
                 let nextState = prev.currentState;
                 let nextStabilityTime = prev.stabilityTime + 1;
     
-                if (prev.currentState === "TEMPERATURE" && nextStabilityTime >= MAX_STABILITY_TIME) {
-                    nextState = "ALCOHOL";
-                    nextStabilityTime = 0; // Reset stability time when switching states
-                    console.log("🔌 Disconnecting temperature WebSocket...");
-                    refs.socket?.off("temperature");
+                if (prev.currentState === "TEMPERATURE") {
+                    if (nextStabilityTime >= MAX_STABILITY_TIME) {
+                        nextState = "ALCOHOL";
+                        nextStabilityTime = 0;
+                        console.log("🔌 Switching to ALCOHOL state, disconnecting temperature WebSocket...");
+                        refs.socket?.off("temperature");
+                    }
                 }
     
                 if (prev.currentState === "ALCOHOL") {
                     if (prev.alcoholData.alcoholLevel === "Не определено" && alcoholStatus !== "Не определено") {
-                        nextStabilityTime = 0; // Reset stability time on first valid alcohol data
+                        nextStabilityTime = 0;
                     }
     
                     if (nextStabilityTime >= MAX_STABILITY_TIME) {
                         console.log("✅ Alcohol measurement complete, navigating to authentication...");
-                        handleComplete();
+                        handleComplete(); // Navigate only once
                     }
                 }
     
