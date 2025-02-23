@@ -102,7 +102,6 @@ export const useHealthCheck = (): HealthCheckState & {
         }
     }, [state, navigate]);
     
-    
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             console.log("📡 Received sensor data:", JSON.stringify(data));
@@ -112,47 +111,58 @@ export const useHealthCheck = (): HealthCheckState & {
                 return;
             }
     
-            // ✅ Stop updates if authentication is already completed
-            if (refs.finalAlcoholLevel === "COMPLETED") {
-                console.warn("🚫 Ignoring updates after authentication is complete.");
-                return;
-            }
-    
             refs.lastDataTime = Date.now();
             clearTimeout(refs.timeout!);
             refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT); // ⏳ Reset timeout to 15s
     
             let alcoholStatus = refs.finalAlcoholLevel || state.alcoholData.alcoholLevel;
+            
             if (data.alcoholLevel !== undefined && data.alcoholLevel !== null) {
                 alcoholStatus = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
                 refs.finalAlcoholLevel = alcoholStatus; // Store final alcohol state
     
                 console.log(`✅ Alcohol detected as "${alcoholStatus}", FORCE NAVIGATING to authentication...`);
                 
-                // 🔥 Immediately stop the state updates
+                // 🔥 Instantly set progress to 100% and navigate
                 setState((prev) => ({
                     ...prev,
-                    stabilityTime: MAX_STABILITY_TIME, // ✅ Instantly set progress to 100%
+                    stabilityTime: MAX_STABILITY_TIME,  // ✅ Force full progress
                     alcoholData: { alcoholLevel: alcoholStatus },
                 }));
     
-                handleComplete(); // 🔥 Force navigation to authentication page
-                
+                handleComplete(); // 🔥 Navigate immediately
                 return; // ✅ Prevent further execution
             }
     
-            setState((prev) => ({
-                ...prev,
-                temperatureData: prev.currentState === "TEMPERATURE"
-                    ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 }
-                    : prev.temperatureData,
-                alcoholData: prev.currentState === "ALCOHOL"
-                    ? { alcoholLevel: refs.finalAlcoholLevel || "Не определено" }
-                    : prev.alcoholData,
-            }));
+            setState((prev) => {
+                let nextState = prev.currentState;
+                let nextStabilityTime = prev.stabilityTime + 1;
+    
+                if (prev.currentState === "TEMPERATURE") {
+                    if (nextStabilityTime >= MAX_STABILITY_TIME) {
+                        nextState = "ALCOHOL";
+                        nextStabilityTime = 0;
+                        console.log("🔌 Switching to ALCOHOL state, disconnecting temperature WebSocket...");
+                        refs.socket?.off("temperature");
+                    }
+                }
+    
+                return {
+                    ...prev,
+                    stabilityTime: nextStabilityTime,  // ✅ Normal progress for temperature
+                    temperatureData: prev.currentState === "TEMPERATURE"
+                        ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 }
+                        : prev.temperatureData,
+                    alcoholData: prev.currentState === "ALCOHOL"
+                        ? { alcoholLevel: refs.finalAlcoholLevel || "Не определено" }
+                        : prev.alcoholData,
+                    currentState: nextState,
+                };
+            });
         },
         [handleComplete]
     );
+    
     
     
 

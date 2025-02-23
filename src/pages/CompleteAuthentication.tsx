@@ -46,12 +46,15 @@ export default function HealthCheck() {
     value={displayValue}
     unit={state.unit}
     progress={
-        alcoholData.alcoholLevel !== "Не определено"
-            ? 100 // ✅ Instantly set progress to 100% when alcohol is received
-            : (stabilityTime / MAX_STABILITY_TIME) * 100
+        currentState === "TEMPERATURE"
+            ? (stabilityTime / MAX_STABILITY_TIME) * 100  // ✅ Temperature progresses normally
+            : alcoholData.alcoholLevel !== "Не определено"
+            ? 100  // ✅ Alcohol jumps to 100% once detected
+            : 0  // ✅ Prevents alcohol from showing an incomplete progress bar
     }
-    onComplete={handleComplete} // ✅ handleComplete will navigate only once
+    onComplete={handleComplete} // ✅ Triggers navigation only for alcohol
 />
+
 
 					{displayValue === "loading" && (
 						<span className="text-sm text-gray-400">
