@@ -66,11 +66,6 @@ export const useHealthCheck = (): HealthCheckState & {
                 navigate("/", { replace: true });
             }, 1000);
         } else {
-            toast.error("Ошибка измерения. Пожалуйста, попробуйте снова.");
-    
-            setTimeout(() => {
-                navigate("/", { replace: true });
-            }, 1000);
         }
     }, [navigate, state.currentState]);
     
