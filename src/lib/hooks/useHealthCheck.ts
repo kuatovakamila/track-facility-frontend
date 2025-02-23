@@ -87,19 +87,19 @@ export const useHealthCheck = (): HealthCheckState & {
         },
         []
     );
-	const resetSession = () => {
-        console.log("🔄 Resetting session...");
-        refs.hasNavigated = false;
-        refs.isSubmitting = false;
-        refs.hasTimedOut = false;
-        setState({
-            currentState: "TEMPERATURE",
-            stabilityTime: 0,
-            temperatureData: { temperature: 0 },
-            alcoholData: { alcoholLevel: "Не определено" },
-            secondsLeft: 15,
-        });
-    };
+	// const resetSession = () => {
+    //     console.log("🔄 Resetting session...");
+    //     refs.hasNavigated = false;
+    //     refs.isSubmitting = false;
+    //     refs.hasTimedOut = false;
+    //     setState({
+    //         currentState: "TEMPERATURE",
+    //         stabilityTime: 0,
+    //         temperatureData: { temperature: 0 },
+    //         alcoholData: { alcoholLevel: "Не определено" },
+    //         secondsLeft: 15,
+    //     });
+    // };
 
     const handleTimeout = useCallback(() => {
         if (refs.hasTimedOut) return;
@@ -165,33 +165,35 @@ export const useHealthCheck = (): HealthCheckState & {
     );
 
     useEffect(() => {
-        const socket = io('http://localhost:3001', {
+        if (refs.socket) return;
+        refs.hasTimedOut = false;
+
+        const socket = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001', {
             transports: ["websocket"],
             reconnection: true,
             reconnectionAttempts: 20,
             reconnectionDelay: 10000,
         });
-    
+
         socket.on("connect", () => {
+            console.log("✅ WebSocket connected successfully.");
             refs.socket = socket;
         });
-    
+
+        socket.on("disconnect", (reason) => {
+            console.warn("⚠️ WebSocket disconnected:", reason);
+        });
+
         configureSocketListeners(socket, state.currentState, {
             onData: handleDataEvent,
             onError: handleTimeout,
         });
-    
+
         return () => {
-            socket.off("connect_error");
-            socket.off("error");
-            socket.off("temperature");
-            socket.off("alcohol");
-            socket.off("camera");
             socket.disconnect();
             refs.socket = null;
         };
-    }, [state.currentState, handleDataEvent, handleTimeout]);
-    
+    }, [state.currentState, handleTimeout, handleDataEvent, navigate]);
 
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || refs.hasNavigated) return;
@@ -237,7 +239,6 @@ export const useHealthCheck = (): HealthCheckState & {
                 alcohol: state.alcoholData.alcoholLevel,
             }));
     
-            resetSession();
     
             navigate("/complete-authentication", { state: { success: true } });
     
