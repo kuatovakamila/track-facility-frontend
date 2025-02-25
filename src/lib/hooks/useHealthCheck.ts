@@ -43,7 +43,9 @@ export const useHealthCheck = (): HealthCheckState & {
         hasTimedOutTemperature: false,
         hasTimedOutAlcohol: false,
         isSubmitting: false,
-        finalAlcoholLevel: "", // Store the final alcohol level
+        finalAlcoholLevel: "",
+        lastTemperatureUpdate: 0, // Время последнего обновления температуры
+        lastAlcoholUpdate: 0, // Время последнего обновления алкоголя
     }).current;
 
     const updateState = useCallback(
@@ -55,23 +57,36 @@ export const useHealthCheck = (): HealthCheckState & {
 
     const handleTimeout = useCallback(
         (type: "TEMPERATURE" | "ALCOHOL") => {
-            if (type === "TEMPERATURE" && refs.hasTimedOutTemperature) return;
-            if (type === "ALCOHOL" && refs.hasTimedOutAlcohol) return;
+            const now = Date.now();
 
             if (type === "TEMPERATURE") {
+                if (refs.hasTimedOutTemperature) return;
+
+                // ✅ Отмена таймаута, если данные пришли менее секунды назад
+                if (now - refs.lastTemperatureUpdate < 1000) {
+                    console.warn("⏳ Таймаут отменен: недавно пришли данные температуры.");
+                    return;
+                }
+
                 refs.hasTimedOutTemperature = true;
                 console.warn("⏳ Timeout для TEMPERATURE, переход в ALCOHOL...");
                 updateState({ currentState: "ALCOHOL", stabilityTime: 0 });
 
-                // Останавливаем таймер температуры
                 clearTimeout(refs.temperatureTimeout!);
             } else if (type === "ALCOHOL") {
+                if (refs.hasTimedOutAlcohol) return;
+
+                // ✅ Отмена таймаута, если данные пришли менее секунды назад
+                if (now - refs.lastAlcoholUpdate < 1000) {
+                    console.warn("⏳ Таймаут отменен: недавно пришли данные алкоголя.");
+                    return;
+                }
+
                 refs.hasTimedOutAlcohol = true;
                 console.warn("⏳ Timeout для ALCOHOL, показываем ошибку...");
                 toast.error("Вы неправильно подули, повторите попытку.");
                 setTimeout(() => navigate("/", { replace: true }), 1000);
 
-                // Останавливаем таймер алкоголя
                 clearTimeout(refs.alcoholTimeout!);
             }
         },
@@ -130,14 +145,16 @@ export const useHealthCheck = (): HealthCheckState & {
                 return;
             }
 
-            // Если пришли данные температуры, обновляем таймаут
+            const now = Date.now();
+
             if (data.temperature) {
+                refs.lastTemperatureUpdate = now; // ✅ Обновляем время получения температуры
                 clearTimeout(refs.temperatureTimeout!);
                 refs.temperatureTimeout = setTimeout(() => handleTimeout("TEMPERATURE"), SOCKET_TIMEOUT);
             }
 
-            // Если пришли данные алкоголя, обновляем таймаут
             if (data.alcoholLevel) {
+                refs.lastAlcoholUpdate = now; // ✅ Обновляем время получения алкоголя
                 clearTimeout(refs.alcoholTimeout!);
                 refs.alcoholTimeout = setTimeout(() => handleTimeout("ALCOHOL"), SOCKET_TIMEOUT);
             }
@@ -159,32 +176,6 @@ export const useHealthCheck = (): HealthCheckState & {
                 handleComplete();
                 return;
             }
-
-            setState((prev) => {
-                let nextState = prev.currentState;
-                let nextStabilityTime = prev.stabilityTime + 1;
-
-                if (prev.currentState === "TEMPERATURE") {
-                    if (nextStabilityTime >= MAX_STABILITY_TIME) {
-                        nextState = "ALCOHOL";
-                        nextStabilityTime = 0;
-                        console.log("🔌 Switching to ALCOHOL state, disconnecting temperature WebSocket...");
-                        refs.socket?.off("temperature");
-                    }
-                }
-
-                return {
-                    ...prev,
-                    stabilityTime: nextStabilityTime,
-                    temperatureData: prev.currentState === "TEMPERATURE"
-                        ? { temperature: parseFloat(Number(data.temperature).toFixed(2)) || 0 }
-                        : prev.temperatureData,
-                    alcoholData: prev.currentState === "ALCOHOL"
-                        ? { alcoholLevel: refs.finalAlcoholLevel || "Не определено" }
-                        : prev.alcoholData,
-                    currentState: nextState,
-                };
-            });
         },
         [handleComplete]
     );
@@ -220,6 +211,7 @@ export const useHealthCheck = (): HealthCheckState & {
         setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
     };
 };
+
 
    
 
