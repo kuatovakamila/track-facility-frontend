@@ -68,7 +68,7 @@ export default function HealthCheck() {
                                     Ожидание сенсора...
                                 </motion.h1>
                                 <motion.p className="text-gray-400 mb-12">
-                                    Пожалуйста не дуйте, подождите прогрев датчика...
+                                    Пожалуйста, подождите...
                                 </motion.p>
                             </>
                         ) : (
@@ -93,7 +93,7 @@ export default function HealthCheck() {
                     </motion.div>
                 </AnimatePresence>
 
-                {/* ✅ Центрируем температуру внутри LoadingCircle, ЧУТЬ НИЖЕ ИКОНКИ */}
+                {/* ✅ Центрируем температуру ПОД иконкой, но НАД прогресс-баром */}
                 <div className="relative flex items-center justify-center">
                     <LoadingCircle
                         key={currentState}
@@ -109,9 +109,9 @@ export default function HealthCheck() {
                         }
                         onComplete={handleComplete}
                     />
-                    {/* ✅ Температура чуть ниже иконки */}
+                    {/* ✅ Температура теперь ровно между иконкой и прогресс-баром */}
                     <motion.p
-                        className="absolute bottom-2 md:bottom-4 text-sm md:text-base font-medium text-white"
+                        className="absolute top-10 md:top-12 text-xs md:text-sm font-medium text-white"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
