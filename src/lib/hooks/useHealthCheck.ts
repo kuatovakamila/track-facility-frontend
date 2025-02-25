@@ -23,6 +23,7 @@ type HealthCheckState = {
     temperatureData: { temperature: number };
     alcoholData: { alcoholLevel: string };
     sensorReady: boolean;
+    awaitingAlcoholData: boolean; // 🆕 Новый флаг
     secondsLeft: number;
 };
 
@@ -36,7 +37,8 @@ export const useHealthCheck = (): HealthCheckState & {
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: "Не определено" },
-        sensorReady: false, // Сенсор не готов изначально
+        sensorReady: false,
+        awaitingAlcoholData: false, // 🆕 Сначала false, ждем данных
         secondsLeft: 7,
     });
 
@@ -65,7 +67,7 @@ export const useHealthCheck = (): HealthCheckState & {
             if (type === "TEMPERATURE") {
                 refs.hasTimedOutTemperature = true;
                 console.warn("⏳ Timeout для TEMPERATURE, переход в ALCOHOL...");
-                updateState({ currentState: "ALCOHOL", stabilityTime: 0, sensorReady: false });
+                updateState({ currentState: "ALCOHOL", stabilityTime: 0, sensorReady: false, awaitingAlcoholData: true });
 
                 clearTimeout(refs.temperatureTimeout!);
             } else if (type === "ALCOHOL") {
@@ -93,7 +95,13 @@ export const useHealthCheck = (): HealthCheckState & {
         // ✅ Обновляем состояние готовности сенсора
         if (data.sensorReady !== undefined) {
             console.log(`🚦 Sensor ready: ${data.sensorReady}`);
-            updateState({ sensorReady: data.sensorReady });
+
+            // 🆕 Если `sensorReady` стал `false`, но мы еще ждем `alcoholLevel`, НЕ перенаправляем
+            if (!data.sensorReady && state.awaitingAlcoholData) {
+                console.log("⏳ Sensor not ready, but awaiting alcohol data...");
+            } else {
+                updateState({ sensorReady: data.sensorReady });
+            }
         }
 
         // ✅ Если получена температура, обновляем состояние
@@ -113,7 +121,7 @@ export const useHealthCheck = (): HealthCheckState & {
         }
 
         // ✅ Если сенсор готов и поступили данные об алкоголе, обновляем состояние
-        if (state.sensorReady && data.alcoholLevel !== null && (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal")) {
+        if (state.awaitingAlcoholData && data.alcoholLevel !== null && (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal")) {
             console.log("✅ Valid alcohol data received, updating state...");
 
             clearTimeout(refs.alcoholTimeout!);
@@ -124,12 +132,13 @@ export const useHealthCheck = (): HealthCheckState & {
             updateState({
                 stabilityTime: MAX_STABILITY_TIME,
                 alcoholData: { alcoholLevel: refs.finalAlcoholLevel },
+                awaitingAlcoholData: false, // 🆕 Сбрасываем, данные получены
             });
 
             handleComplete();
             return;
         }
-    }, [state.sensorReady]);
+    }, [state.awaitingAlcoholData]);
 
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || refs.hasTimedOutAlcohol || state.currentState !== "ALCOHOL") return;
@@ -159,6 +168,7 @@ export const useHealthCheck = (): HealthCheckState & {
             return;
         } catch (error) {
             console.error("❌ Submission error:", error);
+            toast.error("Ошибка отправки данных. Попробуйте снова.");
             refs.isSubmitting = false;
         }
     }, [state, navigate]);
@@ -180,7 +190,7 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.socket.on("temperature", handleDataEvent);
         } else if (state.currentState === "ALCOHOL") {
             refs.socket.on("alcohol", handleDataEvent);
-            refs.socket.on("sensorReady", handleDataEvent); // 🆕 Подписка на sensorReady
+            refs.socket.on("sensorReady", handleDataEvent);
         }
 
         return () => {
@@ -193,8 +203,10 @@ export const useHealthCheck = (): HealthCheckState & {
     return {
         ...state,
         handleComplete,
-        setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),    };
+        setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
+    };
 };
+
 
 //  import { useState, useEffect, useCallback, useRef } from "react";
 // import { useNavigate } from "react-router-dom";
