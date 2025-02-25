@@ -116,15 +116,11 @@ export const useHealthCheck = (): HealthCheckState & {
             if (!response.ok) throw new Error("Request failed");
 
             console.log("✅ Authentication complete, navigating to final results...");
-
-            navigate("/final-results", {
-                state: {
-                    temperature: state.temperatureData.temperature,
-                    alcoholLevel: refs.finalAlcoholLevel,
-                },
-                replace: true,
-            });
-
+            localStorage.setItem("finalTemperature", JSON.stringify(state.temperatureData.temperature));
+            localStorage.setItem("finalAlcoholLevel", JSON.stringify(refs.finalAlcoholLevel));
+            
+            navigate("/final-results", { replace: true });
+            
             return;
         } catch (error) {
             console.error("❌ Submission error:", error);

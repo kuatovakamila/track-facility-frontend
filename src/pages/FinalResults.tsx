@@ -7,11 +7,12 @@ import { useEffect } from "react";
 export default function FinalResults() {
     const navigate = useNavigate();
     const location = useLocation();
-
-    // Extract data passed via navigation state
+    const storedTemperature = JSON.parse(localStorage.getItem("finalTemperature") || "null");
+    const storedAlcoholLevel = JSON.parse(localStorage.getItem("finalAlcoholLevel") || "null");
+    
     const { temperature, alcoholLevel } = location.state || {
-        temperature: "Неизвестно",
-        alcoholLevel: "Неизвестно",
+        temperature: storedTemperature ?? "Неизвестно",
+        alcoholLevel: storedAlcoholLevel ?? "Неизвестно",
     };
     useEffect(() => {
         const timeout = setTimeout(() => {
