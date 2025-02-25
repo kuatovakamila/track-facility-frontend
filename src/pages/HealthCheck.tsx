@@ -25,7 +25,7 @@ export default function HealthCheck() {
 
     if (currentState === "TEMPERATURE") {
         displayValue = temperatureData.temperature
-            ? Number(temperatureData.temperature).toFixed(1)
+            ? Number(temperatureData.temperature).toFixed(1) + "°C"
             : "Нет данных";
     } else if (currentState === "ALCOHOL" && alcoholData?.alcoholLevel) {
         displayValue = alcoholData.alcoholLevel;
@@ -73,7 +73,7 @@ export default function HealthCheck() {
                                     Ожидание сенсора...
                                 </motion.h1>
                                 <motion.p className="text-gray-400 mb-12">
-                                    Пожалуйста, подождите требуется прогрев датчика...
+                                    Пожалуйста, подождите...
                                 </motion.p>
                             </>
                         ) : (
@@ -81,13 +81,6 @@ export default function HealthCheck() {
                                 <motion.h1 className="text-xl md:text-2xl font-medium mb-2">
                                     {state.title}
                                 </motion.h1>
-
-                                {/* ✅ Вывод температуры отдельно, даже если `displayValue` не ререндерится */}
-                                {currentState === "TEMPERATURE" && (
-                                    <motion.p className="text-lg text-yellow-400 mb-4">
-                                        🌡️ Температура: {temperatureData.temperature ? `${temperatureData.temperature}°C` : "Нет данных"}
-                                    </motion.p>
-                                )}
 
                                 {currentState === "ALCOHOL" && sensorReady && countdown > 0 ? (
                                     <motion.p className="text-lg text-yellow-400 mb-4">
@@ -105,21 +98,31 @@ export default function HealthCheck() {
                     </motion.div>
                 </AnimatePresence>
 
-                {/* ✅ Индикатор загрузки */}
-                <LoadingCircle
-                    key={currentState}
-                    icon={state.icon}
-                    value={displayValue}
-                    unit={state.unit}
-                    progress={
-                        currentState === "TEMPERATURE" && temperatureData.temperature !== undefined
-                            ? (stabilityTime / MAX_STABILITY_TIME) * 100
-                            : currentState === "ALCOHOL" && alcoholData.alcoholLevel !== "Не определено"
-                            ? 100
-                            : 0
-                    }
-                    onComplete={handleComplete}
-                />
+                {/* ✅ Центрируем температуру внутри LoadingCircle */}
+                <div className="relative flex items-center justify-center">
+                    <LoadingCircle
+                        key={currentState}
+                        icon={state.icon}
+                        value={displayValue}
+                        unit={state.unit}
+                        progress={
+                            currentState === "TEMPERATURE" && temperatureData.temperature !== undefined
+                                ? (stabilityTime / MAX_STABILITY_TIME) * 100
+                                : currentState === "ALCOHOL" && alcoholData.alcoholLevel !== "Не определено"
+                                ? 100
+                                : 0
+                        }
+                        onComplete={handleComplete}
+                    />
+                    <motion.p
+                        className="absolute text-4xl md:text-6xl font-bold text-white"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                    >
+                        {displayValue}
+                    </motion.p>
+                </div>
             </motion.div>
         </div>
     );
