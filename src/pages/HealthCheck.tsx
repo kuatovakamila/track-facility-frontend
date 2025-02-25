@@ -20,20 +20,17 @@ export default function HealthCheck() {
 
     const state = STATES[currentState];
 
-    // ✅ Отображаемое значение (в реальном времени)
-    const [displayValue, setDisplayValue] = useState<string | number>("loading");
-
-    useEffect(() => {
-        if (currentState === "TEMPERATURE" && temperatureData.temperature !== undefined) {
-            setDisplayValue(Number(temperatureData.temperature).toFixed(1) + "°C");
-        } else if (currentState === "ALCOHOL" && alcoholData?.alcoholLevel) {
-            setDisplayValue(alcoholData.alcoholLevel);
-        }
-    }, [temperatureData.temperature, alcoholData.alcoholLevel, currentState]);
+    // ✅ Реалтайм-обновление значения (температура + алкоголь)
+    const displayValue =
+        currentState === "TEMPERATURE" && temperatureData.temperature !== undefined
+            ? Number(temperatureData.temperature).toFixed(1) + "°C"
+            : currentState === "ALCOHOL" && alcoholData?.alcoholLevel
+            ? alcoholData.alcoholLevel
+            : "Нет данных";
 
     // ✅ Логи для отладки данных
     useEffect(() => {
-        console.log("🌡️ UI обновил температуру:", temperatureData.temperature);
+        console.log("🌡️ Температура обновлена:", temperatureData.temperature);
         console.log("🍷 Alcohol Level:", alcoholData.alcoholLevel);
         console.log("🚦 Sensor Ready:", sensorReady);
     }, [temperatureData.temperature, alcoholData.alcoholLevel, sensorReady]);
@@ -112,9 +109,9 @@ export default function HealthCheck() {
                         }
                         onComplete={handleComplete}
                     />
-                    {/* ТЕМПЕРАТУРА БОЛЬШИМИ БУКВАМИ, ПО ЦЕНТРУ */}
+                    {/* ✅ Температура по центру, меньший шрифт */}
                     <motion.p
-                        className="absolute text-3xl md:text-5xl font-semibold text-white"
+                        className="absolute text-xl md:text-2xl font-semibold text-white"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -126,3 +123,4 @@ export default function HealthCheck() {
         </div>
     );
 }
+
