@@ -65,6 +65,9 @@ export const useHealthCheck = (): HealthCheckState & {
 
                 clearTimeout(refs.temperatureTimeout!);
             } else if (type === "ALCOHOL") {
+                // 🚀 FIX: Prevent `toast.error` if alcohol was detected!
+                if (refs.finalAlcoholLevel) return;
+
                 refs.hasTimedOutAlcohol = true;
                 console.warn("⏳ Timeout для ALCOHOL, показываем ошибку...");
                 toast.error("Вы неправильно подули, повторите попытку.");
@@ -161,13 +164,11 @@ export const useHealthCheck = (): HealthCheckState & {
         });
 
         try {
-            navigate("/final-results", {
-                state: {
-                    temperature: state.temperatureData.temperature,
-                    alcoholLevel: refs.finalAlcoholLevel || "Неизвестно",
-                },
-                replace: true,
-            });
+            // 🚀 FIX: Store values in `localStorage` to persist after navigation
+            localStorage.setItem("finalTemperature", JSON.stringify(state.temperatureData.temperature));
+            localStorage.setItem("finalAlcoholLevel", JSON.stringify(refs.finalAlcoholLevel));
+
+            navigate("/final-results", { replace: true });
 
             return;
         } catch (error) {
@@ -203,9 +204,9 @@ export const useHealthCheck = (): HealthCheckState & {
         ...state,
         handleComplete,
         setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
-
     };
 };
+
 
 
   
