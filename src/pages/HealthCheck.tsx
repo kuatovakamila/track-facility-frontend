@@ -27,14 +27,24 @@ export default function HealthCheck() {
         displayValue = alcoholData.alcoholLevel;
     }
 
+    // ✅ Логируем сенсорные данные для отладки
+    useEffect(() => {
+        console.log("🌡️ Температура:", temperatureData.temperature);
+        console.log("🍷 Alcohol Level:", alcoholData.alcoholLevel);
+        console.log("🚦 sensorReady изменился:", sensorReady);
+    }, [temperatureData, alcoholData, sensorReady]);
+
     // 🆕 Локальный таймер для обратного отсчета
     const [countdown, setCountdown] = useState(secondsLeft);
     const [countdownStarted, setCountdownStarted] = useState(false);
 
-    // 🆕 Начинаем обратный отсчет только когда sensorReady === true
+    // ✅ Начинаем таймер, только когда sensorReady === true
     useEffect(() => {
         if (currentState === "ALCOHOL" && sensorReady && !countdownStarted) {
+            console.log("⏳ Обратный отсчет начался...");
             setCountdownStarted(true);
+            setCountdown(secondsLeft);
+
             const timer = setInterval(() => {
                 setCountdown((prev) => {
                     if (prev > 0) return prev - 1;
@@ -42,9 +52,10 @@ export default function HealthCheck() {
                     return 0;
                 });
             }, 1000);
+
             return () => clearInterval(timer);
         }
-    }, [sensorReady, countdownStarted, currentState]);
+    }, [sensorReady, countdownStarted, currentState, secondsLeft]);
 
     return (
         <div className="min-h-screen bg-black text-white flex flex-col">
@@ -91,8 +102,8 @@ export default function HealthCheck() {
                     progress={
                         currentState === "TEMPERATURE"
                             ? (stabilityTime / MAX_STABILITY_TIME) * 100
-                            : sensorReady && countdown === 0
-                            ? (stabilityTime / MAX_STABILITY_TIME) * 100
+                            : alcoholData.alcoholLevel !== "Не определено"
+                            ? 100 // ✅ Теперь progress сразу 100%, когда получены данные об алкоголе
                             : 0 // Не начинать индикатор, пока сенсор не готов и таймер не завершился
                     }
                     onComplete={handleComplete}
