@@ -6,12 +6,14 @@ import { StateKey } from "../constants";
 
 // Constants
 const MAX_STABILITY_TIME = 7; // 7 seconds for progress completion
-const SOCKET_TIMEOUT = 25000; // 20 seconds timeout before showing an error
+const SOCKET_TIMEOUT = 30000; // 30 seconds timeout before showing an error
 
 // Define sensor data types
 type SensorData = {
     temperature?: string;
-    alcoholLevel?: string;
+    alcoholLevel?: string | null;
+    sensorReady?: boolean;
+    sensorStatus?: "on" | "off";
     cameraStatus?: "failed" | "success";
 };
 
@@ -20,6 +22,7 @@ type HealthCheckState = {
     stabilityTime: number;
     temperatureData: { temperature: number };
     alcoholData: { alcoholLevel: string };
+    sensorReady: boolean;
     secondsLeft: number;
 };
 
@@ -33,7 +36,8 @@ export const useHealthCheck = (): HealthCheckState & {
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: "Не определено" },
-        secondsLeft: 20,
+        sensorReady: false, // Сенсор не готов изначально
+        secondsLeft: 7,
     });
 
     const refs = useRef({
@@ -43,7 +47,7 @@ export const useHealthCheck = (): HealthCheckState & {
         hasTimedOutTemperature: false,
         hasTimedOutAlcohol: false,
         isSubmitting: false,
-        finalAlcoholLevel: "", // Store the final alcohol level
+        finalAlcoholLevel: "",
     }).current;
 
     const updateState = useCallback(
@@ -61,11 +65,10 @@ export const useHealthCheck = (): HealthCheckState & {
             if (type === "TEMPERATURE") {
                 refs.hasTimedOutTemperature = true;
                 console.warn("⏳ Timeout для TEMPERATURE, переход в ALCOHOL...");
-                updateState({ currentState: "ALCOHOL", stabilityTime: 0 });
+                updateState({ currentState: "ALCOHOL", stabilityTime: 0, sensorReady: false });
 
                 clearTimeout(refs.temperatureTimeout!);
             } else if (type === "ALCOHOL") {
-                // 🚀 FIX: Prevent `toast.error` if alcohol was detected!
                 if (refs.finalAlcoholLevel) return;
 
                 refs.hasTimedOutAlcohol = true;
@@ -82,72 +85,56 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleDataEvent = useCallback((data: SensorData) => {
         console.log("📡 Received sensor data:", JSON.stringify(data));
 
-        if (!data || (!data.temperature && !data.alcoholLevel)) {
+        if (!data || (!data.temperature && !data.alcoholLevel && data.sensorReady === undefined)) {
             console.warn("⚠️ No valid sensor data received");
             return;
         }
 
-        // ✅ If temperature data is received, update it
+        // ✅ Обновляем состояние готовности сенсора
+        if (data.sensorReady !== undefined) {
+            console.log(`🚦 Sensor ready: ${data.sensorReady}`);
+            updateState({ sensorReady: data.sensorReady });
+        }
+
+        // ✅ Если получена температура, обновляем состояние
         if (data.temperature) {
             const tempValue = parseFloat(Number(data.temperature).toFixed(2)) || 0;
             console.log(`🌡️ Temperature received: ${tempValue}°C`);
 
-            setState((prev) => {
-                let nextState = prev.currentState;
-                let nextStabilityTime = prev.stabilityTime + 1;
+            setState((prev) => ({
+                ...prev,
+                stabilityTime: prev.stabilityTime + 1,
+                temperatureData: { temperature: tempValue },
+                currentState: prev.stabilityTime + 1 >= MAX_STABILITY_TIME ? "ALCOHOL" : prev.currentState,
+            }));
 
-                // ✅ Progress temperature stability time
-                if (prev.currentState === "TEMPERATURE") {
-                    if (nextStabilityTime >= MAX_STABILITY_TIME) {
-                        nextState = "ALCOHOL";
-                        nextStabilityTime = 0;
-                        console.log("🔄 Switching to ALCOHOL...");
-                    }
-                }
-
-                return {
-                    ...prev,
-                    stabilityTime: nextStabilityTime,
-                    temperatureData: { temperature: tempValue },
-                    currentState: nextState,
-                };
-            });
-
-            if (refs.temperatureTimeout !== null) {
-                clearTimeout(refs.temperatureTimeout);
-            }
+            clearTimeout(refs.temperatureTimeout!);
             refs.temperatureTimeout = setTimeout(() => handleTimeout("TEMPERATURE"), SOCKET_TIMEOUT);
         }
 
-        // ✅ If valid alcohol data is received, update state & clear timeout
-        if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
+        // ✅ Если сенсор готов и поступили данные об алкоголе, обновляем состояние
+        if (state.sensorReady && data.alcoholLevel !== null && (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal")) {
             console.log("✅ Valid alcohol data received, updating state...");
 
-            if (refs.alcoholTimeout !== null) {
-                clearTimeout(refs.alcoholTimeout);
-                refs.alcoholTimeout = null;
-            }
+            clearTimeout(refs.alcoholTimeout!);
+            refs.alcoholTimeout = null;
 
             refs.finalAlcoholLevel = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
 
-            console.log("📡 Updated finalAlcoholLevel:", refs.finalAlcoholLevel);
-
-            setState((prev) => ({
-                ...prev,
+            updateState({
                 stabilityTime: MAX_STABILITY_TIME,
                 alcoholData: { alcoholLevel: refs.finalAlcoholLevel },
-            }));
+            });
 
             handleComplete();
             return;
         }
-    }, []);
+    }, [state.sensorReady]);
 
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || refs.hasTimedOutAlcohol || state.currentState !== "ALCOHOL") return;
         refs.isSubmitting = true;
 
-        // ✅ Ensure timeouts are cleared before submission
         if (refs.alcoholTimeout !== null) {
             clearTimeout(refs.alcoholTimeout);
             refs.alcoholTimeout = null;
@@ -164,7 +151,6 @@ export const useHealthCheck = (): HealthCheckState & {
         });
 
         try {
-            // 🚀 FIX: Store values in `localStorage` to persist after navigation
             localStorage.setItem("finalTemperature", JSON.stringify(state.temperatureData.temperature));
             localStorage.setItem("finalAlcoholLevel", JSON.stringify(refs.finalAlcoholLevel));
 
@@ -194,231 +180,231 @@ export const useHealthCheck = (): HealthCheckState & {
             refs.socket.on("temperature", handleDataEvent);
         } else if (state.currentState === "ALCOHOL") {
             refs.socket.on("alcohol", handleDataEvent);
+            refs.socket.on("sensorReady", handleDataEvent); // 🆕 Подписка на sensorReady
         }
 
-        refs.temperatureTimeout = setTimeout(() => handleTimeout("TEMPERATURE"), SOCKET_TIMEOUT);
-        refs.alcoholTimeout = setTimeout(() => handleTimeout("ALCOHOL"), SOCKET_TIMEOUT);
-    }, [state.currentState, handleTimeout, handleDataEvent]);
+        return () => {
+            refs.socket?.off("temperature");
+            refs.socket?.off("alcohol");
+            refs.socket?.off("sensorReady");
+        };
+    }, [state.currentState, handleDataEvent]);
 
     return {
         ...state,
         handleComplete,
-        setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
-    };
+        setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),    };
 };
 
-
-
-  
-// import { useState, useEffect, useCallback, useRef } from "react";
+//  import { useState, useEffect, useCallback, useRef } from "react";
 // import { useNavigate } from "react-router-dom";
 // import { io, type Socket } from "socket.io-client";
-// import { ref, onValue } from "firebase/database";
-// import { db } from "./firebase";
+// import { toast } from "react-hot-toast";
 // import { StateKey } from "../constants";
-// import toast from "react-hot-toast";
 
-// const MAX_STABILITY_TIME = 7;
-// const SOCKET_TIMEOUT = 15000;
-// const STABILITY_UPDATE_INTERVAL = 1000;
-// const COUNTDOWN_TIME = 15;
+// // Constants
+// const MAX_STABILITY_TIME = 7; // 7 seconds for progress completion
+// const SOCKET_TIMEOUT = 30000; // 20 seconds timeout before showing an error
 
-// const TIMEOUT_MESSAGE =
-// 	"Не удается отследить данные, попробуйте еще раз или свяжитесь с администрацией.";
-
+// // Define sensor data types
 // type SensorData = {
-// 	temperature?: string;
-// 	alcoholLevel?: string;
+//     temperature?: string;
+//     alcoholLevel?: string;
+//     cameraStatus?: "failed" | "success";
 // };
 
 // type HealthCheckState = {
-// 	currentState: StateKey;
-// 	stabilityTime: number;
-// 	temperatureData: { temperature: number };
-// 	alcoholData: { alcoholLevel: string };
-// 	secondsLeft: number;
-// 	progress: number;
+//     currentState: StateKey;
+//     stabilityTime: number;
+//     temperatureData: { temperature: number };
+//     alcoholData: { alcoholLevel: string };
+//     secondsLeft: number;
 // };
-
-// const STATE_SEQUENCE: StateKey[] = ["TEMPERATURE", "ALCOHOL"];
 
 // export const useHealthCheck = (): HealthCheckState & {
-// 	handleComplete: () => Promise<void>;
-// 	setCurrentState: React.Dispatch<React.SetStateAction<StateKey>>;
+//     handleComplete: () => Promise<void>;
+//     setCurrentState: React.Dispatch<React.SetStateAction<StateKey>>;
 // } => {
-// 	const navigate = useNavigate();
-// 	const [state, setState] = useState<HealthCheckState>({
-// 		currentState: STATE_SEQUENCE[0],
-// 		stabilityTime: 0,
-// 		temperatureData: { temperature: 0 },
-// 		alcoholData: { alcoholLevel: "Не определено" },
-// 		secondsLeft: COUNTDOWN_TIME,
-// 		progress: 0,
-// 	});
+//     const navigate = useNavigate();
+//     const [state, setState] = useState<HealthCheckState>({
+//         currentState: "TEMPERATURE",
+//         stabilityTime: 0,
+//         temperatureData: { temperature: 0 },
+//         alcoholData: { alcoholLevel: "Не определено" },
+//         secondsLeft: 7,
+//     });
 
-// 	/** ✅ NEW: Stop All Actions After Completion */
-// 	const refs = useRef({
-// 		socket: null as Socket | null,
-// 		timeout: null as NodeJS.Timeout | null,
-// 		lastDataTime: Date.now(),
-// 		stopAll: false,
-// 		hasTimedOut: false,
-// 		stabilityInterval: null as NodeJS.Timeout | null,
-// 		processCompleted: false, // ✅ Ensures process only runs ONCE
-// 	}).current;
+//     const refs = useRef({
+//         socket: null as Socket | null,
+//         temperatureTimeout: null as NodeJS.Timeout | null,
+//         alcoholTimeout: null as NodeJS.Timeout | null,
+//         hasTimedOutTemperature: false,
+//         hasTimedOutAlcohol: false,
+//         isSubmitting: false,
+//         finalAlcoholLevel: "", // Store the final alcohol level
+//     }).current;
 
-// 	const updateState = useCallback(
-// 		<K extends keyof HealthCheckState>(updates: Pick<HealthCheckState, K>) => {
-// 			setState((prev) => ({ ...prev, ...updates }));
-// 		},
-// 		[]
-// 	);
+//     const updateState = useCallback(
+//         <K extends keyof HealthCheckState>(updates: Pick<HealthCheckState, K>) => {
+//             setState((prev) => ({ ...prev, ...updates }));
+//         },
+//         []
+//     );
 
-// 	const handleTimeout = useCallback(() => {
-// 		if (refs.stopAll || refs.hasTimedOut) return;
-// 		refs.hasTimedOut = true;
+//     const handleTimeout = useCallback(
+//         (type: "TEMPERATURE" | "ALCOHOL") => {
+//             if (type === "TEMPERATURE" && refs.hasTimedOutTemperature) return;
+//             if (type === "ALCOHOL" && refs.hasTimedOutAlcohol) return;
 
-// 		toast.error(TIMEOUT_MESSAGE, {
-// 			duration: 3000,
-// 			style: { background: "#272727", color: "#fff", borderRadius: "8px" },
-// 		});
-// 		navigate("/");
-// 	}, [navigate]);
+//             if (type === "TEMPERATURE") {
+//                 refs.hasTimedOutTemperature = true;
+//                 console.warn("⏳ Timeout для TEMPERATURE, переход в ALCOHOL...");
+//                 updateState({ currentState: "ALCOHOL", stabilityTime: 0 });
 
-// 	const handleComplete = useCallback(async () => {
-// 		if (refs.processCompleted) return; // ✅ Prevent multiple executions
-// 		refs.processCompleted = true; // ✅ Mark process as completed
-// 		refs.stopAll = true;
+//                 clearTimeout(refs.temperatureTimeout!);
+//             } else if (type === "ALCOHOL") {
+//                 // 🚀 FIX: Prevent `toast.error` if alcohol was detected!
+//                 if (refs.finalAlcoholLevel) return;
 
-// 		console.log("🎉 Health check complete! Navigating to /complete-authentication");
+//                 refs.hasTimedOutAlcohol = true;
+//                 console.warn("⏳ Timeout для ALCOHOL, показываем ошибку...");
+//                 toast.error("Вы неправильно подули, повторите попытку.");
+//                 setTimeout(() => navigate("/", { replace: true }), 1000);
 
-// 		if (refs.socket) {
-// 			console.log("🔌 Disconnecting WebSocket...");
-// 			refs.socket.disconnect();
-// 			refs.socket = null;
-// 		}
+//                 clearTimeout(refs.alcoholTimeout!);
+//             }
+//         },
+//         [navigate]
+//     );
 
-// 		clearTimeout(refs.timeout!);
-// 		refs.timeout = null;
+//     const handleDataEvent = useCallback((data: SensorData) => {
+//         console.log("📡 Received sensor data:", JSON.stringify(data));
 
-// 		setTimeout(() => navigate("/complete-authentication", { state: { success: true } }), 100);
-// 	}, [navigate]);
+//         if (!data || (!data.temperature && !data.alcoholLevel)) {
+//             console.warn("⚠️ No valid sensor data received");
+//             return;
+//         }
 
-// 	const handleDataEvent = useCallback(
-// 		(data: SensorData) => {
-// 			if (!data || refs.stopAll) return;
+//         // ✅ If temperature data is received, update it
+//         if (data.temperature) {
+//             const tempValue = parseFloat(Number(data.temperature).toFixed(2)) || 0;
+//             console.log(`🌡️ Temperature received: ${tempValue}°C`);
 
-// 			refs.lastDataTime = Date.now();
-// 			clearTimeout(refs.timeout!);
-// 			refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+//             setState((prev) => {
+//                 let nextState = prev.currentState;
+//                 let nextStabilityTime = prev.stabilityTime + 1;
 
-// 			if (state.currentState === "TEMPERATURE" && data.temperature) {
-// 				const newTemperature = Number(data.temperature);
+//                 // ✅ Progress temperature stability time
+//                 if (prev.currentState === "TEMPERATURE") {
+//                     if (nextStabilityTime >= MAX_STABILITY_TIME) {
+//                         nextState = "ALCOHOL";
+//                         nextStabilityTime = 0;
+//                         console.log("🔄 Switching to ALCOHOL...");
+//                     }
+//                 }
 
-// 				setState((prev) => {
-// 					const newStabilityTime = Math.min(prev.stabilityTime + 1, MAX_STABILITY_TIME);
-// 					const newProgress = (newStabilityTime / MAX_STABILITY_TIME) * 100;
+//                 return {
+//                     ...prev,
+//                     stabilityTime: nextStabilityTime,
+//                     temperatureData: { temperature: tempValue },
+//                     currentState: nextState,
+//                 };
+//             });
 
-// 					if (newStabilityTime >= MAX_STABILITY_TIME) {
-// 						console.log("✅ Temperature stabilized! Moving to next state...");
-// 						const nextStateIndex = STATE_SEQUENCE.indexOf(prev.currentState) + 1;
-// 						if (nextStateIndex < STATE_SEQUENCE.length) {
-// 							updateState({ currentState: STATE_SEQUENCE[nextStateIndex], stabilityTime: 0, progress: 0 });
-// 						} else {
-// 							handleComplete();
-// 						}
-// 					}
+//             if (refs.temperatureTimeout !== null) {
+//                 clearTimeout(refs.temperatureTimeout);
+//             }
+//             refs.temperatureTimeout = setTimeout(() => handleTimeout("TEMPERATURE"), SOCKET_TIMEOUT);
+//         }
 
-// 					return {
-// 						...prev,
-// 						stabilityTime: newStabilityTime,
-// 						temperatureData: { temperature: newTemperature },
-// 						progress: newProgress,
-// 					};
-// 				});
-// 			}
-// 		},
-// 		[state.currentState, handleTimeout, updateState]
-// 	);
+//         // ✅ If valid alcohol data is received, update state & clear timeout
+//         if (data.alcoholLevel === "normal" || data.alcoholLevel === "abnormal") {
+//             console.log("✅ Valid alcohol data received, updating state...");
 
-// 	const listenToAlcoholData = useCallback(() => {
-// 		if (refs.processCompleted) return; // ✅ Prevent re-listening
+//             if (refs.alcoholTimeout !== null) {
+//                 clearTimeout(refs.alcoholTimeout);
+//                 refs.alcoholTimeout = null;
+//             }
 
-// 		const alcoholRef = ref(db, "alcohol_value");
-// 		console.log("📡 Listening to Firebase alcohol data...");
+//             refs.finalAlcoholLevel = data.alcoholLevel === "normal" ? "Трезвый" : "Пьяный";
 
-// 		refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+//             console.log("📡 Updated finalAlcoholLevel:", refs.finalAlcoholLevel);
 
-// 		const unsubscribe = onValue(alcoholRef, (snapshot) => {
-// 			if (refs.processCompleted) return; // ✅ Prevent execution after completion
+//             setState((prev) => ({
+//                 ...prev,
+//                 stabilityTime: MAX_STABILITY_TIME,
+//                 alcoholData: { alcoholLevel: refs.finalAlcoholLevel },
+//             }));
 
-// 			const data = snapshot.val();
-// 			if (!data) {
-// 				console.warn("⚠️ No alcohol data received from Firebase.");
-// 				return;
-// 			}
+//             handleComplete();
+//             return;
+//         }
+//     }, []);
 
-// 			console.log("📡 Alcohol data received from Firebase:", data);
+//     const handleComplete = useCallback(async () => {
+//         if (refs.isSubmitting || refs.hasTimedOutAlcohol || state.currentState !== "ALCOHOL") return;
+//         refs.isSubmitting = true;
 
-// 			let alcoholStatus = "Не определено";
-// 			if (data.sober === 0) alcoholStatus = "Трезвый";
-// 			else if (data.drunk === 0) alcoholStatus = "Пьяный";
+//         // ✅ Ensure timeouts are cleared before submission
+//         if (refs.alcoholTimeout !== null) {
+//             clearTimeout(refs.alcoholTimeout);
+//             refs.alcoholTimeout = null;
+//         }
 
-// 			if (alcoholStatus !== "Не определено") {
-// 				console.log("✅ Final alcohol status detected:", alcoholStatus);
+//         if (refs.temperatureTimeout !== null) {
+//             clearTimeout(refs.temperatureTimeout);
+//             refs.temperatureTimeout = null;
+//         }
 
-// 				setState((prev) => ({
-// 					...prev,
-// 					alcoholData: { alcoholLevel: alcoholStatus },
-// 				}));
+//         console.log("🚀 Submitting health check data with:", {
+//             temperature: state.temperatureData.temperature,
+//             alcoholLevel: refs.finalAlcoholLevel,
+//         });
 
-// 				clearTimeout(refs.timeout!);
-// 				unsubscribe();
+//         try {
+//             // 🚀 FIX: Store values in `localStorage` to persist after navigation
+//             localStorage.setItem("finalTemperature", JSON.stringify(state.temperatureData.temperature));
+//             localStorage.setItem("finalAlcoholLevel", JSON.stringify(refs.finalAlcoholLevel));
 
-// 				console.log("🚀 Executing handleComplete()");
-// 				handleComplete();
-// 			}
-// 		});
+//             navigate("/final-results", { replace: true });
 
-// 		return () => {
-// 			console.log("❌ Stopping alcohol listener.");
-// 			unsubscribe();
-// 			clearTimeout(refs.timeout!);
-// 		};
-// 	}, [handleComplete, handleTimeout]);
+//             return;
+//         } catch (error) {
+//             console.error("❌ Submission error:", error);
+//             refs.isSubmitting = false;
+//         }
+//     }, [state, navigate]);
 
-// 	useEffect(() => {
-// 		if (state.currentState === "ALCOHOL") {
-// 			const cleanupAlcohol = listenToAlcoholData();
-// 			return () => {
-// 				if (cleanupAlcohol) cleanupAlcohol();
-// 			};
-// 		}
-// 	}, [state.currentState, listenToAlcoholData]);
+//     useEffect(() => {
+//         if (!refs.socket) {
+//             refs.socket = io("http://localhost:3001", {
+//                 transports: ["websocket"],
+//                 reconnection: true,
+//                 reconnectionAttempts: Infinity,
+//                 reconnectionDelay: 1000,
+//             });
+//         }
 
-// 	useEffect(() => {
-// 		if (refs.processCompleted) return;
+//         refs.socket.off("temperature");
+//         refs.socket.off("alcohol");
 
-// 		const socket = io("http://localhost:3001", { transports: ["websocket"], reconnection: false });
+//         if (state.currentState === "TEMPERATURE") {
+//             refs.socket.on("temperature", handleDataEvent);
+//         } else if (state.currentState === "ALCOHOL") {
+//             refs.socket.on("alcohol", handleDataEvent);
+//         }
 
-// 		refs.socket = socket;
-// 		refs.timeout = setTimeout(handleTimeout, SOCKET_TIMEOUT);
+//         refs.temperatureTimeout = setTimeout(() => handleTimeout("TEMPERATURE"), SOCKET_TIMEOUT);
+//         refs.alcoholTimeout = setTimeout(() => handleTimeout("ALCOHOL"), SOCKET_TIMEOUT);
+//     }, [state.currentState, handleTimeout, handleDataEvent]);
 
-// 		socket.on("temperature", handleDataEvent);
-
-// 		return () => {
-// 			console.log("🛑 Cleanup: Disconnecting WebSocket...");
-// 			socket.disconnect();
-// 			clearTimeout(refs.timeout!);
-// 		};
-// 	}, [state.currentState, handleTimeout]);
-
-// 	return {
-// 		...state,
-// 		handleComplete,
-// 		setCurrentState: (newState: React.SetStateAction<StateKey>) =>
-// 			updateState({
-// 				currentState: typeof newState === "function" ? newState(state.currentState) : newState,
-// 			}),
-// 	};
+//     return {
+//         ...state,
+//         handleComplete,
+//         setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
+//     };
 // };
+
+
+
+ 
