@@ -20,16 +20,16 @@ export default function HealthCheck() {
 
     const state = STATES[currentState];
 
-    // ✅ Отображаемое значение
-    let displayValue: string | number = "loading";
+    // ✅ Отображаемое значение (в реальном времени)
+    const [displayValue, setDisplayValue] = useState<string | number>("loading");
 
-    if (currentState === "TEMPERATURE") {
-        displayValue = temperatureData.temperature
-            ? Number(temperatureData.temperature).toFixed(1) + "°C"
-            : "Нет данных";
-    } else if (currentState === "ALCOHOL" && alcoholData?.alcoholLevel) {
-        displayValue = alcoholData.alcoholLevel;
-    }
+    useEffect(() => {
+        if (currentState === "TEMPERATURE" && temperatureData.temperature !== undefined) {
+            setDisplayValue(Number(temperatureData.temperature).toFixed(1) + "°C");
+        } else if (currentState === "ALCOHOL" && alcoholData?.alcoholLevel) {
+            setDisplayValue(alcoholData.alcoholLevel);
+        }
+    }, [temperatureData.temperature, alcoholData.alcoholLevel, currentState]);
 
     // ✅ Логи для отладки данных
     useEffect(() => {
@@ -42,10 +42,8 @@ export default function HealthCheck() {
     const [countdown, setCountdown] = useState(secondsLeft);
     const [countdownStarted, setCountdownStarted] = useState(false);
 
-    // ✅ Начинаем таймер, когда sensorReady === true
     useEffect(() => {
         if (currentState === "ALCOHOL" && sensorReady && !countdownStarted) {
-            console.log("⏳ Обратный отсчет начался...");
             setCountdownStarted(true);
             setCountdown(secondsLeft);
 
@@ -114,8 +112,9 @@ export default function HealthCheck() {
                         }
                         onComplete={handleComplete}
                     />
+                    {/* ТЕМПЕРАТУРА БОЛЬШИМИ БУКВАМИ, ПО ЦЕНТРУ */}
                     <motion.p
-                        className="absolute text-4xl md:text-6xl font-bold text-white"
+                        className="absolute text-3xl md:text-5xl font-semibold text-white"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
