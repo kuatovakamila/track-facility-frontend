@@ -4,123 +4,79 @@ import { LoadingCircle } from "../components/LoadingCircle";
 import { STATES } from "../lib/constants";
 import { motion, AnimatePresence } from "framer-motion";
 
-
-const containerVariants = {
-	hidden: { opacity: 0 },
-	visible: {
-		opacity: 1,
-		transition: { staggerChildren: 0.1 },
-	},
-};
-
-const itemVariants = {
-	hidden: { y: 20, opacity: 0 },
-	visible: {
-		y: 0,
-		opacity: 1,
-		transition: { type: "spring", stiffness: 300, damping: 20 },
-	},
-};
+const MAX_STABILITY_TIME = 7;
 
 export default function HealthCheck() {
-	const MAX_STABILITY_TIME = 7;
+    const {
+        currentState,
+        stabilityTime,
+        temperatureData,
+        alcoholData,
+        sensorReady,
+        secondsLeft,
+        handleComplete,
+    } = useHealthCheck();
 
-	const {
-		currentState,
-		stabilityTime,
-		temperatureData,
-		alcoholData,
-		secondsLeft,
-		handleComplete,
-	} = useHealthCheck();
+    const state = STATES[currentState];
 
-	const state = STATES[currentState]; // ✅ Fix TypeScript error
+    let displayValue: string | number | null = "loading";
+    if (currentState === "TEMPERATURE" && temperatureData?.temperature !== undefined) {
+        displayValue = Number(temperatureData.temperature).toFixed(1);
+    } else if (currentState === "ALCOHOL" && alcoholData?.alcoholLevel) {
+        displayValue = alcoholData.alcoholLevel;
+    }
 
-	let displayValue: string | number | null = null;
-	if (currentState === "TEMPERATURE" && temperatureData) {
-		displayValue = Number(temperatureData.temperature);
-	} else if (currentState === "ALCOHOL" && alcoholData) {
-		displayValue = alcoholData.alcoholLevel;
-		console.log({ displayValue });
-	}
+    return (
+        <div className="min-h-screen bg-black text-white flex flex-col">
+            <Header />
+            <motion.div className="flex-1 flex flex-col items-center justify-center p-6">
+                <AnimatePresence mode="wait">
+                    <motion.div key={currentState} className="text-center">
+                        {/* Ожидание готовности сенсора перед тестом на алкоголь */}
+                        {currentState === "ALCOHOL" && !sensorReady ? (
+                            <>
+                                <motion.h1 className="text-xl md:text-2xl font-medium mb-2">
+                                    Ожидание сенсора...
+                                </motion.h1>
+                                <motion.p className="text-gray-400 mb-12">
+                                    Пожалуйста, подождите...
+                                </motion.p>
+                            </>
+                        ) : (
+                            <>
+                                <motion.h1 className="text-xl md:text-2xl font-medium mb-2">
+                                    {state.title}
+                                </motion.h1>
+                                <motion.p className="text-gray-400 mb-4">
+                                    {currentState === "ALCOHOL" ? "Подуйте 3-4 секунды" : state.subtitle}
+                                </motion.p>
+                                {/* Обратный отсчет */}
+                                {currentState === "ALCOHOL" && sensorReady && secondsLeft > 0 && (
+                                    <motion.p className="text-lg text-yellow-400">
+                                        Осталось {secondsLeft} секунд
+                                    </motion.p>
+                                )}
+                            </>
+                        )}
+                    </motion.div>
+                </AnimatePresence>
 
-	return (
-		<div className="min-h-screen bg-black text-white flex flex-col">
-			<Header />
-
-			<motion.div
-				className="flex-1 flex flex-col items-center justify-center p-6"
-				variants={containerVariants}
-			>
-				<AnimatePresence mode="wait">
-					<motion.div
-						key={currentState}
-						initial={{ opacity: 0, y: 20 }}
-						animate={{ opacity: 1, y: 0 }}
-						exit={{ opacity: 0, y: -20 }}
-						transition={{ duration: 0.3 }}
-						className="text-center"
-					>
-						<motion.h1
-							className="text-xl md:text-2xl font-medium mb-2"
-							variants={itemVariants}
-						>
-							{state.title}
-						</motion.h1>
-						<motion.p
-							className="text-gray-400 mb-12"
-							variants={itemVariants}
-						>
-							{state.subtitle}
-						</motion.p>
-					</motion.div>
-				</AnimatePresence>
-
-				<div className="flex flex-col items-center gap-4">
-					<LoadingCircle
-						key={currentState}
-						icon={state.icon} // ✅ Use `state.icon` directly
-						value={displayValue ?? "loading"}
-						unit={state.unit} // ✅ Use `state.unit` directly
-						progress={(stabilityTime / MAX_STABILITY_TIME) * 100}
-						onComplete={handleComplete}
-					/>
-
-					{!displayValue && (
-						<span className="text-sm text-gray-400">
-							{`Осталось ${secondsLeft} ${
-								secondsLeft === 1
-									? "секунда"
-									: secondsLeft > 1 && secondsLeft < 5
-									? "секунды"
-									: "секунд"
-							}`}
-						</span>
-					)}
-				</div>
-
-				<motion.div
-					className="fixed bottom-8 left-0 right-0 flex justify-center gap-4 px-6"
-					variants={containerVariants}
-				>
-					{Object.entries(STATES).map(([key, { icon: Icon }]) => (
-						<motion.div
-							key={key}
-							variants={itemVariants}
-							className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center ${
-								currentState === key
-									? "bg-[#5096FF]"
-									: "bg-[#272727]"
-							}`}
-						>
-							<Icon
-								weight="bold"
-								className="w-5 h-5 md:w-6 md:h-6"
-							/>
-						</motion.div>
-					))}
-				</motion.div>
-			</motion.div>
-		</div>
-	);
+                {/* Индикатор загрузки */}
+                <LoadingCircle
+                    key={currentState}
+                    icon={state.icon}
+                    value={displayValue}
+                    unit={state.unit}
+                    progress={
+                        currentState === "TEMPERATURE"
+                            ? (stabilityTime / MAX_STABILITY_TIME) * 100
+                            : sensorReady
+                            ? (stabilityTime / MAX_STABILITY_TIME) * 100
+                            : 0 // Не начинать индикатор, пока сенсор не готов
+                    }
+                    onComplete={handleComplete}
+                />
+            </motion.div>
+        </div>
+    );
 }
