@@ -109,9 +109,9 @@ export default function HealthCheck() {
                         }
                         onComplete={handleComplete}
                     />
-                    {/* ✅ Температура по центру, меньший шрифт */}
+                    {/* ✅ Температура по центру, меньший и менее жирный шрифт */}
                     <motion.p
-                        className="absolute text-xl md:text-2xl font-semibold text-white"
+                        className="absolute text-sm md:text-base font-medium text-white"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -123,4 +123,3 @@ export default function HealthCheck() {
         </div>
     );
 }
-
