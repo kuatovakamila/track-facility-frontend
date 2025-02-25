@@ -1,4 +1,5 @@
 import { useHealthCheck } from "../lib/hooks/useHealthCheck";
+import { useEffect, useState } from "react";
 import { Header } from "../components/Header";
 import { LoadingCircle } from "../components/LoadingCircle";
 import { STATES } from "../lib/constants";
@@ -26,6 +27,25 @@ export default function HealthCheck() {
         displayValue = alcoholData.alcoholLevel;
     }
 
+    // 🆕 Локальный таймер для обратного отсчета
+    const [countdown, setCountdown] = useState(secondsLeft);
+    const [countdownStarted, setCountdownStarted] = useState(false);
+
+    // 🆕 Начинаем обратный отсчет только когда sensorReady === true
+    useEffect(() => {
+        if (currentState === "ALCOHOL" && sensorReady && !countdownStarted) {
+            setCountdownStarted(true);
+            const timer = setInterval(() => {
+                setCountdown((prev) => {
+                    if (prev > 0) return prev - 1;
+                    clearInterval(timer);
+                    return 0;
+                });
+            }, 1000);
+            return () => clearInterval(timer);
+        }
+    }, [sensorReady, countdownStarted, currentState]);
+
     return (
         <div className="min-h-screen bg-black text-white flex flex-col">
             <Header />
@@ -47,13 +67,14 @@ export default function HealthCheck() {
                                 <motion.h1 className="text-xl md:text-2xl font-medium mb-2">
                                     {state.title}
                                 </motion.h1>
-                                <motion.p className="text-gray-400 mb-4">
-                                    {currentState === "ALCOHOL" ? "Подуйте 3-4 секунды" : state.subtitle}
-                                </motion.p>
-                                {/* Обратный отсчет */}
-                                {currentState === "ALCOHOL" && sensorReady && secondsLeft > 0 && (
-                                    <motion.p className="text-lg text-yellow-400">
-                                        Осталось {secondsLeft} секунд
+                                {/* Если сенсор готов, но есть таймер, показываем обратный отсчет */}
+                                {currentState === "ALCOHOL" && sensorReady && countdown > 0 ? (
+                                    <motion.p className="text-lg text-yellow-400 mb-4">
+                                        Осталось {countdown} секунд
+                                    </motion.p>
+                                ) : (
+                                    <motion.p className="text-gray-400 mb-4">
+                                        {currentState === "ALCOHOL" ? "Подуйте 3-4 секунды" : state.subtitle}
                                     </motion.p>
                                 )}
                             </>
@@ -70,9 +91,9 @@ export default function HealthCheck() {
                     progress={
                         currentState === "TEMPERATURE"
                             ? (stabilityTime / MAX_STABILITY_TIME) * 100
-                            : sensorReady
+                            : sensorReady && countdown === 0
                             ? (stabilityTime / MAX_STABILITY_TIME) * 100
-                            : 0 // Не начинать индикатор, пока сенсор не готов
+                            : 0 // Не начинать индикатор, пока сенсор не готов и таймер не завершился
                     }
                     onComplete={handleComplete}
                 />
