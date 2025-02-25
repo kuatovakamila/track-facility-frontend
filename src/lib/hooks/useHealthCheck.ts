@@ -33,7 +33,7 @@ export const useHealthCheck = (): HealthCheckState & {
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: "Не определено" },
-        secondsLeft: 7,
+        secondsLeft: 20,
     });
 
     const refs = useRef({
