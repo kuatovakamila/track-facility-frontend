@@ -89,7 +89,26 @@ export const useHealthCheck = (): HealthCheckState & {
             const tempValue = parseFloat(Number(data.temperature).toFixed(2)) || 0;
             console.log(`🌡️ Temperature received: ${tempValue}°C`);
 
-            updateState({ temperatureData: { temperature: tempValue } });
+            setState((prev) => {
+                let nextState = prev.currentState;
+                let nextStabilityTime = prev.stabilityTime + 1;
+
+                // ✅ Progress temperature stability time
+                if (prev.currentState === "TEMPERATURE") {
+                    if (nextStabilityTime >= MAX_STABILITY_TIME) {
+                        nextState = "ALCOHOL";
+                        nextStabilityTime = 0;
+                        console.log("🔄 Switching to ALCOHOL...");
+                    }
+                }
+
+                return {
+                    ...prev,
+                    stabilityTime: nextStabilityTime,
+                    temperatureData: { temperature: tempValue },
+                    currentState: nextState,
+                };
+            });
 
             if (refs.temperatureTimeout !== null) {
                 clearTimeout(refs.temperatureTimeout);
@@ -110,10 +129,11 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("📡 Updated finalAlcoholLevel:", refs.finalAlcoholLevel);
 
-            updateState({
+            setState((prev) => ({
+                ...prev,
                 stabilityTime: MAX_STABILITY_TIME,
                 alcoholData: { alcoholLevel: refs.finalAlcoholLevel },
-            });
+            }));
 
             handleComplete();
             return;
@@ -183,8 +203,11 @@ export const useHealthCheck = (): HealthCheckState & {
         ...state,
         handleComplete,
         setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
+
+    };
 };
-}
+
+
   
 // import { useState, useEffect, useCallback, useRef } from "react";
 // import { useNavigate } from "react-router-dom";
