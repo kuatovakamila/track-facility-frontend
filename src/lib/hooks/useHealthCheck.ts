@@ -60,12 +60,16 @@ export const useHealthCheck = (): HealthCheckState & {
 
             if (type === "TEMPERATURE") {
                 refs.hasTimedOutTemperature = true;
+                console.warn("⏳ Timeout для TEMPERATURE, переход в ALCOHOL...");
                 updateState({ currentState: "ALCOHOL", stabilityTime: 0 });
+
                 clearTimeout(refs.temperatureTimeout!);
             } else if (type === "ALCOHOL") {
                 refs.hasTimedOutAlcohol = true;
+                console.warn("⏳ Timeout для ALCOHOL, показываем ошибку...");
                 toast.error("Вы неправильно подули, повторите попытку.");
                 setTimeout(() => navigate("/", { replace: true }), 1000);
+
                 clearTimeout(refs.alcoholTimeout!);
             }
         },
@@ -78,6 +82,19 @@ export const useHealthCheck = (): HealthCheckState & {
         if (!data || (!data.temperature && !data.alcoholLevel)) {
             console.warn("⚠️ No valid sensor data received");
             return;
+        }
+
+        // ✅ If temperature data is received, update it
+        if (data.temperature) {
+            const tempValue = parseFloat(Number(data.temperature).toFixed(2)) || 0;
+            console.log(`🌡️ Temperature received: ${tempValue}°C`);
+
+            updateState({ temperatureData: { temperature: tempValue } });
+
+            if (refs.temperatureTimeout !== null) {
+                clearTimeout(refs.temperatureTimeout);
+            }
+            refs.temperatureTimeout = setTimeout(() => handleTimeout("TEMPERATURE"), SOCKET_TIMEOUT);
         }
 
         // ✅ If valid alcohol data is received, update state & clear timeout
@@ -93,16 +110,14 @@ export const useHealthCheck = (): HealthCheckState & {
 
             console.log("📡 Updated finalAlcoholLevel:", refs.finalAlcoholLevel);
 
-            setState((prev) => ({
-                ...prev,
+            updateState({
                 stabilityTime: MAX_STABILITY_TIME,
                 alcoholData: { alcoholLevel: refs.finalAlcoholLevel },
-            }));
+            });
 
             handleComplete();
             return;
         }
-
     }, []);
 
     const handleComplete = useCallback(async () => {
@@ -168,9 +183,9 @@ export const useHealthCheck = (): HealthCheckState & {
         ...state,
         handleComplete,
         setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }),
-    };
 };
-
+}
+  
 // import { useState, useEffect, useCallback, useRef } from "react";
 // import { useNavigate } from "react-router-dom";
 // import { io, type Socket } from "socket.io-client";
