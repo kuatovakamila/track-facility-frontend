@@ -111,7 +111,7 @@ export default function HealthCheck() {
                     />
                     {/* ✅ Температура ровно между иконкой и прогресс-баром */}
                     <motion.p
-                        className="absolute top-[55%] md:top-[58%] text-xs md:text-sm font-medium text-white"
+                        className="absolute top-[60%] md:top-[62%] text-xs md:text-sm font-medium text-white"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
