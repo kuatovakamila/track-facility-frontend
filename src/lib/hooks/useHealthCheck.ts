@@ -79,22 +79,29 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleComplete = useCallback(async () => {
         if (refs.isSubmitting || refs.hasTimedOutAlcohol || state.currentState !== "ALCOHOL") return;
         refs.isSubmitting = true;
-
-        // ✅ Clear timeout to prevent unnecessary error messages
-        if (refs.alcoholTimeout) {
+    
+        // ✅ Убираем таймеры перед отправкой данных
+        if (refs.alcoholTimeout !== null) {
+            console.log("🛑 Clearing alcohol timeout before submission...");
             clearTimeout(refs.alcoholTimeout);
             refs.alcoholTimeout = null;
         }
-
+    
+        if (refs.temperatureTimeout !== null) {
+            console.log("🛑 Clearing temperature timeout before submission...");
+            clearTimeout(refs.temperatureTimeout);
+            refs.temperatureTimeout = null;
+        }
+    
         try {
             console.log("🔌 Disconnecting all WebSockets before authentication...");
             refs.socket?.off("temperature");
             refs.socket?.off("alcohol");
             refs.socket?.disconnect();
-
+    
             const faceId = localStorage.getItem("faceId");
             if (!faceId) throw new Error("Face ID not found");
-
+    
             console.log("🚀 Submitting health check data...");
             const response = await fetch(`http://localhost:3001/health`, {
                 method: "POST",
@@ -105,11 +112,11 @@ export const useHealthCheck = (): HealthCheckState & {
                     faceId,
                 }),
             });
-
+    
             if (!response.ok) throw new Error("Request failed");
-
+    
             console.log("✅ Authentication complete, navigating to final results...");
-
+    
             navigate("/final-results", {
                 state: {
                     temperature: state.temperatureData.temperature,
@@ -117,14 +124,14 @@ export const useHealthCheck = (): HealthCheckState & {
                 },
                 replace: true,
             });
-
+    
             return;
         } catch (error) {
             console.error("❌ Submission error:", error);
             refs.isSubmitting = false;
         }
     }, [state, navigate]);
-
+    
     const handleDataEvent = useCallback(
         (data: SensorData) => {
             console.log("📡 Received sensor data:", JSON.stringify(data));
