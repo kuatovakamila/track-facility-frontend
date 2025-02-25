@@ -36,7 +36,7 @@ export const useHealthCheck = (): HealthCheckState & {
         stabilityTime: 0,
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: "Не определено" },
-        sensorReady: false, // Сенсор не готов изначально
+        sensorReady: false,
         secondsLeft: 7,
     });
 
@@ -44,11 +44,12 @@ export const useHealthCheck = (): HealthCheckState & {
         socket: null as Socket | null,
         temperatureTimeout: null as NodeJS.Timeout | null,
         alcoholTimeout: null as NodeJS.Timeout | null,
+        noDataTimeout: null as NodeJS.Timeout | null, // Таймаут на 30 секунд без данных
         hasTimedOutTemperature: false,
         hasTimedOutAlcohol: false,
         isSubmitting: false,
         finalAlcoholLevel: "",
-        hasBeenReady: false, // Добавляем флаг для предотвращения отката sensorReady
+        hasBeenReady: false,
     }).current;
 
     const updateState = useCallback(
@@ -81,6 +82,13 @@ export const useHealthCheck = (): HealthCheckState & {
     const handleDataEvent = useCallback((data: SensorData) => {
         console.log("📡 Received sensor data:", JSON.stringify(data));
 
+        clearTimeout(refs.noDataTimeout!); // Сброс таймаута при новых данных
+        refs.noDataTimeout = setTimeout(() => {
+            console.warn("⏳ Нет данных 30 секунд, перенаправляем...");
+            toast.error("Сбой связи с сенсором. Попробуйте снова.");
+            navigate("/", { replace: true });
+        }, SOCKET_TIMEOUT);
+
         if (!data || (!data.temperature && !data.alcoholLevel && data.sensorReady === undefined)) {
             console.warn("⚠️ No valid sensor data received");
             return;
@@ -88,7 +96,7 @@ export const useHealthCheck = (): HealthCheckState & {
 
         if (data.sensorReady !== undefined && !refs.hasBeenReady) {
             console.log(`🚦 Sensor ready: ${data.sensorReady}`);
-            if (data.sensorReady) refs.hasBeenReady = true; // Если sensorReady был true, больше не меняем
+            if (data.sensorReady) refs.hasBeenReady = true;
             updateState({ sensorReady: refs.hasBeenReady });
         }
 
@@ -124,6 +132,7 @@ export const useHealthCheck = (): HealthCheckState & {
         refs.isSubmitting = true;
         clearTimeout(refs.alcoholTimeout!);
         clearTimeout(refs.temperatureTimeout!);
+        clearTimeout(refs.noDataTimeout!);
 
         console.log("🚀 Submitting health check data:", state.temperatureData.temperature, refs.finalAlcoholLevel);
         try {
@@ -153,12 +162,17 @@ export const useHealthCheck = (): HealthCheckState & {
         };
     }, [handleDataEvent]);
 
+    useEffect(() => {
+        console.log("🌡 Температура обновлена:", state.temperatureData.temperature);
+    }, [state.temperatureData.temperature]);
+
     return { 
         ...state, 
         handleComplete, 
         setCurrentState: (newState) => updateState({ currentState: typeof newState === "function" ? newState(state.currentState) : newState }) 
     };
 };
+
 
 //  import { useState, useEffect, useCallback, useRef } from "react";
 // import { useNavigate } from "react-router-dom";
