@@ -36,7 +36,7 @@ export const useHealthCheck = (): HealthCheckState & {
         temperatureData: { temperature: 0 },
         alcoholData: { alcoholLevel: "Не определено" },
         sensorReady: false,
-        secondsLeft: 7,
+        secondsLeft: 30,
     });
 
     const refs = useRef({
