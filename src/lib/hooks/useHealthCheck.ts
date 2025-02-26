@@ -6,7 +6,7 @@ import { StateKey } from "../constants";
 
 // Constants
 const MAX_STABILITY_TIME = 7;
-const SOCKET_TIMEOUT = 20000; // 20 секунд таймаут для каждого сенсора
+const SOCKET_TIMEOUT = 30000; // 20 секунд таймаут для каждого сенсора
 
 // Sensor Data Type
 type SensorData = {
